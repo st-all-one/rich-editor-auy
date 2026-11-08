@@ -64,9 +64,18 @@ impl Doc {
         }
         let mut offset = 0_u32;
         let mut path = Vec::new();
+        let text_kind = schema.node_kind("text");
         for (index, block) in self.blocks().iter().enumerate() {
             path.push(u32::try_from(index).unwrap_or(u32::MAX));
-            validate_block(block, schema, &mut path, Pos(offset), &mut ids, &mut report);
+            validate_block(
+                block,
+                schema,
+                &mut path,
+                Pos(offset),
+                &mut ids,
+                &mut report,
+                text_kind,
+            );
             path.pop();
             offset = offset.saturating_add(block.size().0);
         }
@@ -88,6 +97,7 @@ fn validate_block(
     start: Pos,
     ids: &mut BTreeSet<NodeId>,
     report: &mut DocReport,
+    text_kind: Option<NodeKind>,
 ) {
     let Some(spec) = schema.node(block.kind()) else {
         report.issues.push(issue("I2", path, Some(start)));
@@ -106,7 +116,6 @@ fn validate_block(
             if block.size().0 != text.size().0 {
                 report.issues.push(issue("I10", path, Some(start)));
             }
-            let text_kind = schema.node_kind("text");
             let accepts_text = spec.inline
                 || text_kind.is_some_and(|kind| schema.content_allows(block.kind(), &[kind]))
                 || schema.content_allows(block.kind(), &[]);
@@ -130,7 +139,9 @@ fn validate_block(
                             report.issues.push(issue("I4", path, Some(start)));
                         }
                         previous = Some(run.marks.clone());
-                        validate_marks(schema, block.kind(), &run.marks, path, start, report);
+                        if !run.marks.is_empty() {
+                            validate_marks(schema, block.kind(), &run.marks, path, start, report);
+                        }
                     }
                     InlineItem::Atom(atom) => {
                         previous = None;
@@ -163,7 +174,7 @@ fn validate_block(
             let mut offset = start.0.saturating_add(1);
             for (index, child) in children.iter().enumerate() {
                 path.push(u32::try_from(index).unwrap_or(u32::MAX));
-                validate_block(child, schema, path, Pos(offset), ids, report);
+                validate_block(child, schema, path, Pos(offset), ids, report, text_kind);
                 path.pop();
                 offset = offset.saturating_add(child.size().0);
             }

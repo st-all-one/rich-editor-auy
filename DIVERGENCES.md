@@ -37,7 +37,7 @@ recurso.
 | 27 | Documentos pequenos pagavam o diretório de chunks | Até 128 blocos usam um chunk flat; acima disso, diretório de chunks | `model/chunk.rs`; S1 2,05 → 1,73 µs |
 | 28 | `apply_owned` pagava cópia de diretório e chunks | Caminho owned com `Arc::get_mut`: 35 → 25 alocações no insert de 1 char | `model/doc.rs`, `model/chunks.rs`, `state/mod.rs`; `tests/alloc.rs` |
 | 29 | Inversão fazia dois splits para extrair um intervalo | `text_edit::slice_text` extrai o intervalo uma vez, com as mesmas marcas/átomos | `step/text_edit.rs`, `step/invert.rs` |
-| 30 | Parser montava uma `String` de path por nó e crescia `String` byte a byte | Path em pilha (`DecodePath`) materializado só no erro e scanner de strings sem escape por slice | `wire/parser.rs`, `wire/attrs.rs`, `wire/json_parser.rs`; from_json 34,78 → 21,17 ms; `check_json` 20,37 → 8,89 ms |
+| 30 | Parser montava uma `String` de path por nó e crescia `String` byte a byte | Path em pilha (`DecodePath`) materializado só no erro e scanner de strings sem escape por slice | `wire/parser.rs`, `wire/attrs.rs`, `wire/json_parser.rs`; from_json 34,78 → 20,87 ms; `check_json` 20,37 → 8,89 ms |
 | 31 | Writer crescia o `String` final e escrevia run a run | Capacidade pré-calculada e `write_string` copia trechos sem escape de uma vez | `wire/mod.rs`, `wire/writer.rs`; `to_json_string` 2,97 → 1,12 ms |
 | 32 | A11y clonava o `DocPath` ao inserir o nó | `block_nodes` recebe o path por valor e move para o nó; filhos recebem paths novos | `a11y/build.rs`, `a11y/tree.rs`; validate_a11y 11,34 → 11,04 ms |
 
@@ -47,7 +47,7 @@ recurso.
 |---|---|---|---|---|
 | A | `schema!` | Front-end real, mas cobre doc/nó/marca/content/group/marks/attrs básicos; sem acessores tipados e sem testes compile-fail | Extensões como `a11y` declarativa e `trybuild` ainda não têm contrato | Adicionar a11y declarativa, acessores e `trybuild`; documentar subconjunto |
 | B | `apply_owned` | Implementado com mutação in-place quando o snapshot é único; 35 → 25 alocações | S2 2,89 µs no caminho imutável e 3,65 µs no owned; S1 1,73 µs contra alvo de 0,1 µs | Reduzir custo fixo do owned e alocações pequenas |
-| C | Parser JSON | `check_json` S2 8,89 ms; `from_json` S2 21,17 ms contra alvo de 15 ms; surrogate pairs resolvidos; `JsonValue` carrega offset inicial, mas spans completos de campos ainda não | Parse bruto abaixo do alvo; decode/validação ainda acima | Combinar decode com validação incremental e reduzir caminhos de `Doc::new`/`validate` |
+| C | Parser JSON | `check_json` S2 8,89 ms; `from_json` S2 20,87 ms contra alvo de 15 ms; surrogate pairs resolvidos; `JsonValue` carrega offset inicial, mas spans completos de campos ainda não | Parse bruto abaixo do alvo; decode/validação ainda acima | Combinar decode com validação incremental e reduzir caminhos de `Doc::new`/`validate` |
 | D | `validate_a11y` | S2 ~11,04 ms contra alvo de 10 ms | Validação acima do orçamento | Revisar alocações `DocPath`/texto por nó e cachear a árvore no adaptador |
 | E | `iai-callgrind`/baseline | Não instalado; `criterion` é informativo | Sem gate determinístico de instruções/regressão de 5% | Adicionar job com valgrind e `bench/baseline.json` |
 | F | Alocação do caminho quente | Inserção de 1 char = 35 alocações no `apply` e 25 no `apply_owned`; chunks trocam O(n) por diretório pequeno | Acima do alvo de 0 além do step, mas tempo S2 caiu ~37× | Buffers reutilizáveis e remoção das alocações pequenas restantes |

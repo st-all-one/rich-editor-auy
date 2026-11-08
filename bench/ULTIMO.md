@@ -11,7 +11,7 @@
 | `apply` + inserir 1 char (S2) | 2,89 µs | ≤ 10 µs | **ok** |
 | `apply` + inserir 1 char (S1) | 1,73 µs | ≤ 100 ns | **acima** |
 | `to_json_string` | 1,12 ms | ≤ 6 ms | ok |
-| `from_json` (S2) | 21,17 ms | ≤ 15 ms | **acima** |
+| `from_json` (S2) | 20,87 ms | ≤ 15 ms | **acima** |
 | `from_json` (S1) | 344,0 µs | ≤ 15 ms (S2) | informativo |
 | `a11y_tree` | 10,50 ms | orçamento de render | informativo |
 | `validate_a11y` | 11,04 ms | ≤ 10 ms | **acima** |
