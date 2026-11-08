@@ -1,0 +1,254 @@
+{
+ "selectionApiWorks": null,
+ "typing": {
+  "ms": 27,
+  "ops": [
+   {
+    "insert": "Olá mundo\n"
+   }
+  ],
+  "html": "<p>Olá&nbsp;mundo</p>",
+  "range": {
+   "index": 9,
+   "length": 0
+  }
+ },
+ "enter": {
+  "ops": [
+   {
+    "insert": "Olá mundo\nsegundo\n"
+   }
+  ],
+  "html": "<p>Olá&nbsp;mundo</p><p>segundo</p>",
+  "range": {
+   "index": 17,
+   "length": 0
+  }
+ },
+ "boldShortcut": {
+  "ops": [
+   {
+    "insert": "Olá mundo\n"
+   },
+   {
+    "attributes": {
+     "bold": true
+    },
+    "insert": "segundo"
+   },
+   {
+    "insert": "\n"
+   }
+  ],
+  "html": "<p>Olá&nbsp;mundo</p><p><strong>segundo</strong></p>",
+  "range": {
+   "index": 10,
+   "length": 7
+  }
+ },
+ "undo": {
+  "ops": [
+   {
+    "insert": "initial\n"
+   }
+  ],
+  "html": "<p>initial</p>",
+  "range": {
+   "index": 0,
+   "length": 7
+  }
+ },
+ "redo": {
+  "ops": [
+   {
+    "insert": "Olá mundo\n"
+   },
+   {
+    "attributes": {
+     "bold": true
+    },
+    "insert": "segundo"
+   },
+   {
+    "insert": "\n"
+   }
+  ],
+  "html": "<p>Olá&nbsp;mundo</p><p><strong>segundo</strong></p>",
+  "range": {
+   "index": 17,
+   "length": 0
+  }
+ },
+ "listAutofill": {
+  "ops": [
+   {
+    "insert": "item"
+   },
+   {
+    "attributes": {
+     "list": "bullet"
+    },
+    "insert": "\n"
+   },
+   {
+    "insert": "outro"
+   },
+   {
+    "attributes": {
+     "list": "bullet"
+    },
+    "insert": "\n"
+   }
+  ],
+  "html": "<ul><li>item</li><li>outro</li></ul>",
+  "range": {
+   "index": 10,
+   "length": 0
+  }
+ },
+ "listIndent": {
+  "ops": [
+   {
+    "insert": "item"
+   },
+   {
+    "attributes": {
+     "list": "bullet"
+    },
+    "insert": "\n"
+   },
+   {
+    "insert": "outro\t"
+   },
+   {
+    "attributes": {
+     "list": "bullet"
+    },
+    "insert": "\n"
+   }
+  ],
+  "html": "<ul><li>item</li><li>outro\t</li></ul>",
+  "range": {
+   "index": 11,
+   "length": 0
+  }
+ },
+ "pastePlain": {
+  "ops": [
+   {
+    "insert": "colado do clipboard\n"
+   }
+  ],
+  "html": "<p>colado&nbsp;do&nbsp;clipboard</p>",
+  "range": {
+   "index": 19,
+   "length": 0
+  }
+ },
+ "pasteHTML": {
+  "ops": [
+   {
+    "attributes": {
+     "bold": true
+    },
+    "insert": "Bold"
+   },
+   {
+    "insert": " and "
+   },
+   {
+    "attributes": {
+     "italic": true
+    },
+    "insert": "it"
+   },
+   {
+    "insert": "\na"
+   },
+   {
+    "attributes": {
+     "list": "bullet"
+    },
+    "insert": "\n"
+   },
+   {
+    "insert": "b"
+   },
+   {
+    "attributes": {
+     "list": "bullet"
+    },
+    "insert": "\n"
+   },
+   {
+    "insert": "\n"
+   }
+  ],
+  "html": "<p><strong>Bold</strong>&nbsp;and&nbsp;<em>it</em></p><ul><li>a</li><li>b</li></ul><p></p>",
+  "range": {
+   "index": 16,
+   "length": 0
+  }
+ },
+ "imeDuringComposition": {
+  "ops": [
+   {
+    "insert": "\n"
+   }
+  ],
+  "html": "<p></p>",
+  "range": {
+   "index": 0,
+   "length": 0
+  }
+ },
+ "imeCommitted": {
+  "ops": [
+   {
+    "insert": "日本\n"
+   }
+  ],
+  "html": "<p>日本</p>",
+  "range": {
+   "index": 2,
+   "length": 0
+  }
+ },
+ "readOnlyTyping": {
+  "ops": [
+   {
+    "insert": "\n"
+   }
+  ],
+  "html": "<p></p>",
+  "range": {
+   "index": 0,
+   "length": 0
+  }
+ },
+ "readOnlyApiStillWorks": 1,
+ "toolbarClick": {
+  "ops": [
+   {
+    "attributes": {
+     "bold": true
+    },
+    "insert": "cliqu"
+   },
+   {
+    "insert": "e aqui\n"
+   }
+  ],
+  "html": "<p><strong>cliqu</strong>e&nbsp;aqui</p>",
+  "range": {
+   "index": 0,
+   "length": 5
+  }
+ },
+ "typing120": {
+  "ms": 247,
+  "length": 121
+ },
+ "pageErrors": [],
+ "ok": true
+}

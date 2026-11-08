@@ -1,0 +1,13 @@
+# Exemplo executável do dossiê. Não faz parte do workspace do `ref/`:
+# depende do crate por caminho para que o build use exatamente o código auditado.
+[package]
+name = "exemplo-html-auy"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+html-auy = { path = "../../../ref/html-auy/crates/html-auy" }
+
+# `[workspace]` vazio: impede que este pacote seja absorvido por um workspace ancestral.
+[workspace]

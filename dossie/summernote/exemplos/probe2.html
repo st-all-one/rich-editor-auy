@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Summernote 0.9.1 — sonda 2 (ranges, sanitização, teclado, performance)</title>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/summernote@0.9.1/dist/summernote-lite.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/summernote@0.9.1/dist/summernote-lite.min.js"></script>
+</head>
+<body>
+  <textarea id="note" name="note"><p>Hello <b>world</b></p></textarea>
+  <pre id="log">(running)</pre>
+
+<script>
+(function() {
+  var out = [];
+  var pre = document.getElementById('log');
+  function rec(name, value) {
+    var v = (typeof value === 'string') ? value : JSON.stringify(value);
+    out.push(name + '\t' + v);
+    pre.textContent = out.join('\n');
+  }
+  function step(name, fn) {
+    return function() {
+      try { rec(name, fn()); }
+      catch (e) { rec(name, 'THREW ' + (e && e.name) + ': ' + (e && e.message)); }
+    };
+  }
+  function ed() { return document.querySelector('.note-editable'); }
+  function code() { return $('#note').summernote('code'); }
+  function ctx() { return $('#note').data('summernote'); }
+
+  function caretAt(node, offset) {
+    var s = window.getSelection();
+    var r = document.createRange();
+    r.setStart(node, offset);
+    r.collapse(true);
+    s.removeAllRanges();
+    s.addRange(r);
+    ed().focus();
+    $(ed()).trigger($.Event('keyup', { keyCode: 39 }));
+  }
+  // caret in the last text node of the first <p>
+  function caretEndOfFirstPara() {
+    var p = ed().querySelector('p') || ed();
+    var t = p.lastChild;
+    if (t && t.nodeType === 3) { caretAt(t, t.nodeValue.length); }
+    else { caretAt(p, p.childNodes.length); }
+  }
+
+  function chain(steps) {
+    var i = 0;
+    function next() {
+      if (i >= steps.length) { rec('done', 'all steps executed'); document.title = 'DONE'; return; }
+      steps[i++]();
+      setTimeout(next, 40);
+    }
+    next();
+  }
+
+  $(function() {
+    var changes = 0;
+
+    chain([
+      step('init', function() {
+        $('#note').summernote({
+          height: 240,
+          tabSize: 4,
+          callbacks: { onChange: function() { changes++; } },
+        });
+        return 'ok';
+      }),
+
+      // ---- A) lastRange depois de code() (sem interação do usuário) ----
+      step('A1.insertTextSemCaret', function() {
+        $('#note').summernote('code', '<p>abc</p>');
+        $('#note').summernote('insertText', 'X');
+        return code();
+      }),
+      step('A2.pasteHTMLSemCaret', function() {
+        $('#note').summernote('code', '<p>abc</p>');
+        $('#note').summernote('pasteHTML', '<b>Y</b>');
+        return code();
+      }),
+      step('A3.insertTextComCaret', function() {
+        $('#note').summernote('code', '<p>abc</p>');
+        caretEndOfFirstPara();
+        $('#note').summernote('insertText', 'X');
+        return code();
+      }),
+      step('A4.pasteHTMLComCaret', function() {
+        $('#note').summernote('code', '<p>abc</p>');
+        caretEndOfFirstPara();
+        $('#note').summernote('pasteHTML', '<b>Y</b>');
+        return code();
+      }),
+
+      // ---- B) sanitização de pasteHTML ----
+      step('B1.scriptTag', function() {
+        $('#note').summernote('code', '<p>x</p>');
+        caretEndOfFirstPara();
+        $('#note').summernote('pasteHTML', '<p>ok</p><scr' + 'ipt>window.__a=1</scr' + 'ipt>');
+        return { html: code(), ran: String(window.__a) };
+      }),
+      step('B2.onerrorAttr', function() {
+        $('#note').summernote('code', '<p>x</p>');
+        caretEndOfFirstPara();
+        $('#note').summernote('pasteHTML', '<img src="nope.png" onerror="window.__b=1">');
+        return { html: code(), ran: String(window.__b) };
+      }),
+      step('B3.javascriptHref', function() {
+        $('#note').summernote('code', '<p>x</p>');
+        caretEndOfFirstPara();
+        $('#note').summernote('pasteHTML', '<a href="javascript:window.__c=1">click</a>');
+        return code();
+      }),
+      step('B4.styleTag', function() {
+        $('#note').summernote('code', '<p>x</p>');
+        caretEndOfFirstPara();
+        $('#note').summernote('pasteHTML', '<sty' + 'le>body{display:none}</sty' + 'le>');
+        return code();
+      }),
+      step('B5.iframeEvil', function() {
+        $('#note').summernote('code', '<p>x</p>');
+        caretEndOfFirstPara();
+        $('#note').summernote('pasteHTML', '<iframe src="https://evil.example/x"></iframe>');
+        return code();
+      }),
+      step('B6.iframeYoutube', function() {
+        $('#note').summernote('code', '<p>x</p>');
+        caretEndOfFirstPara();
+        $('#note').summernote('pasteHTML', '<iframe src="https://www.youtube.com/embed/abc123"></iframe>');
+        return code();
+      }),
+      step('B7.onclickSurvivesCodeview', function() {
+        $('#note').summernote('code', '<p onclick="window.__d=1">click me</p>');
+        return code();
+      }),
+
+      // ---- C) modelo de parágrafo e listas ----
+      step('C1.enterSplit', function() {
+        $('#note').summernote('code', '<p>abcdef</p>');
+        var t = ed().querySelector('p').firstChild;
+        caretAt(t, 3);
+        $(ed()).trigger($.Event('keydown', { keyCode: 13 }));
+        return code();
+      }),
+      step('C2.enterNoPara', function() {
+        $('#note').summernote('code', 'texto solto');
+        var t = ed().firstChild;
+        caretAt(t, 5);
+        $(ed()).trigger($.Event('keydown', { keyCode: 13 }));
+        return code();
+      }),
+      step('C3.ulFromPara', function() {
+        $('#note').summernote('code', '<p>um</p><p>dois</p>');
+        var t = ed().querySelector('p').firstChild;
+        caretAt(t, 2);
+        $(ed()).trigger($.Event('keydown', { keyCode: 55, ctrlKey: true, shiftKey: true }));
+        return code();
+      }),
+      step('C4.indent', function() {
+        $('#note').summernote('code', '<ul><li>a</li><li>b</li></ul>');
+        var li = ed().querySelectorAll('li')[1];
+        caretAt(li.firstChild, 1);
+        $('#note').summernote('indent');
+        return code();
+      }),
+      step('C5.emptyListEnter', function() {
+        $('#note').summernote('code', '<ul><li>a</li><li><br></li></ul>');
+        var li = ed().querySelectorAll('li')[1];
+        caretAt(li, 0);
+        $(ed()).trigger($.Event('keydown', { keyCode: 13 }));
+        return code();
+      }),
+
+      // ---- D) teclado / a11y ----
+      step('D1.tabInsertsSpaces', function() {
+        $('#note').summernote('code', '<p>ab</p>');
+        var t = ed().querySelector('p').firstChild;
+        caretAt(t, 2);
+        $(ed()).trigger($.Event('keydown', { keyCode: 9 }));
+        return {
+          html: code().replace(/\u00a0/g, '[NBSP]'),
+          activeElement: document.activeElement.className,
+        };
+      }),
+      step('D2.shiftTab', function() {
+        $(ed()).trigger($.Event('keydown', { keyCode: 9, shiftKey: true }));
+        return code().replace(/\u00a0/g, '[NBSP]');
+      }),
+      step('D3.ctrlEnterHr', function() {
+        $('#note').summernote('code', '<p>ab</p>');
+        var t = ed().querySelector('p').firstChild;
+        caretAt(t, 2);
+        $(ed()).trigger($.Event('keydown', { keyCode: 13, ctrlKey: true }));
+        return code();
+      }),
+
+      // ---- E) persistência / eventos ----
+      step('E1.changeCount', function() { return changes; }),
+      step('E2.execCommandInsertText', function() {
+        $('#note').summernote('code', '<p>ab</p>');
+        var t = ed().querySelector('p').firstChild;
+        caretAt(t, 2);
+        document.execCommand('insertText', false, 'Z');
+        return code();
+      }),
+      step('E3.changeCountAfterTyping', function() { return changes; }),
+      step('E4.textareaSync', function() { return $('#note').val(); }),
+
+      // ---- F) CSS herdado / estrutura imposta ----
+      step('F1.computedStyle', function() {
+        var e = ed();
+        var p = e.querySelector('p');
+        var cs = getComputedStyle(e);
+        var csp = p ? getComputedStyle(p) : null;
+        return {
+          editablePadding: cs.padding,
+          editableOutline: cs.outlineStyle + ' ' + cs.outlineWidth,
+          editableOverflow: cs.overflow,
+          editableFontFamily: cs.fontFamily,
+          editableFontSize: cs.fontSize,
+          editableBg: cs.backgroundColor,
+          pMargin: csp ? csp.margin : null,
+          pFontFamily: csp ? csp.fontFamily : null,
+          bodyFontFamily: getComputedStyle(document.body).fontFamily,
+        };
+      }),
+      step('F2.classesInjected', function() {
+        var html = document.querySelector('.note-editor').outerHTML;
+        var classes = (html.match(/class="[^"]*"/g) || []);
+        var unique = {};
+        classes.forEach(function(c) {
+          c.replace(/class="([^"]*)"/, '$1').split(/\s+/).forEach(function(k) { if (k) { unique[k] = 1; } });
+        });
+        return { count: Object.keys(unique).length, sample: Object.keys(unique).slice(0, 30) };
+      }),
+
+      // ---- G) performance com HTML snapshot ----
+      step('G1.buildBigDoc', function() {
+        var paras = [];
+        for (var i = 0; i < 300; i++) {
+          paras.push('<p>Parágrafo ' + i + ' com <b>negrito</b>, <i>itálico</i> e <a href="https://example.com/' + i + '">link</a>.</p>');
+        }
+        var html = paras.join('');
+        var t0 = performance.now();
+        $('#note').summernote('code', html);
+        var t1 = performance.now();
+        return { bytes: html.length, setCodeMs: +(t1 - t0).toFixed(2) };
+      }),
+      step('G2.readCode', function() {
+        var t0 = performance.now();
+        var html = code();
+        var t1 = performance.now();
+        return { bytes: html.length, readMs: +(t1 - t0).toFixed(2) };
+      }),
+      step('G3.typingCost', function() {
+        var e = ed();
+        var lastP = e.querySelectorAll('p')[e.querySelectorAll('p').length - 1];
+        var t = lastP.firstChild;
+        caretAt(t, t.nodeValue.length);
+        var hist = ctx().modules.history;
+        var before = { stack: hist.stack.length, bytes: hist.stack.reduce(function(a, s) { return a + s.contents.length; }, 0) };
+        var t0 = performance.now();
+        for (var i = 0; i < 40; i++) { document.execCommand('insertText', false, 'x'); }
+        var t1 = performance.now();
+        var after = { stack: hist.stack.length, bytes: hist.stack.reduce(function(a, s) { return a + s.contents.length; }, 0) };
+        return {
+          totalMs: +(t1 - t0).toFixed(2),
+          perKeystrokeMs: +((t1 - t0) / 40).toFixed(2),
+          stackBefore: before.stack, stackAfter: after.stack,
+          bytesBefore: before.bytes, bytesAfter: after.bytes,
+          historyLimit: ctx().options.historyLimit,
+        };
+      }),
+      step('G4.undoCost', function() {
+        var t0 = performance.now();
+        $('#note').summernote('undo');
+        var t1 = performance.now();
+        return { undoMs: +(t1 - t0).toFixed(2) };
+      }),
+      step('G5.domNodeCount', function() {
+        return ed().querySelectorAll('*').length;
+      }),
+    ]);
+  });
+})();
+</script>
+</body>
+</html>

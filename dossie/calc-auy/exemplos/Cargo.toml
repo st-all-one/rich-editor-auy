@@ -1,0 +1,11 @@
+[package]
+name = "calc-auy-dossie-exemplo"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+calc-auy-api = { path = "../../../ref/calc-auy/crates/calc-auy-api" }
+
+# Fora do workspace do repositório do dossiê.
+[workspace]

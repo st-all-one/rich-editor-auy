@@ -1,0 +1,105 @@
+<!doctype html>
+<!--
+  Exemplo mínimo de "editor" com ProseMirror: schema + estado + keymap + history + view.
+  NÃO EXECUTADO neste dossiê: exige navegador e rede (importmap via esm.sh) ou um bundler.
+  Como verificar: `python3 -m http.server 8080` nesta pasta e abrir /minimal-editor.html
+  (ou `npx serve`), com rede liberada para esm.sh/jsdelivr.
+  O objetivo é mostrar, em um arquivo, tudo que o ProseMirror NÃO entrega pronto:
+  CSS próprio, keymap semântico, a11y via attributes e um laço de dispatch.
+-->
+<meta charset="utf-8">
+<title>ProseMirror mínimo (não executado)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prosemirror-view@1.42.9/style/prosemirror.css">
+<style>
+  /* Estilo do HOST, não do ProseMirror: o pacote só exige o CSS funcional acima. */
+  body { font: 16px/1.5 system-ui, sans-serif; margin: 2rem auto; max-width: 42rem; }
+  #editor { border: 1px solid #ccc; border-radius: 6px; padding: .75rem; min-height: 8rem; }
+  button { margin-right: .5rem; }
+</style>
+
+<h1>ProseMirror mínimo</h1>
+<p>
+  <button data-cmd="strong"><b>Negrito</b> (Mod-b)</button>
+  <button data-cmd="em"><i>Itálico</i> (Mod-i)</button>
+  <button data-cmd="undo">Desfazer (Mod-z)</button>
+  <button data-cmd="json">Ver JSON</button>
+</p>
+<div id="editor"></div>
+<pre id="out" hidden></pre>
+
+<script type="importmap">
+{
+  "imports": {
+    "prosemirror-model": "https://esm.sh/prosemirror-model@1.25.12",
+    "prosemirror-state": "https://esm.sh/prosemirror-state@1.4.4",
+    "prosemirror-view": "https://esm.sh/prosemirror-view@1.42.9",
+    "prosemirror-transform": "https://esm.sh/prosemirror-transform@1.12.5",
+    "prosemirror-history": "https://esm.sh/prosemirror-history@1.5.1",
+    "prosemirror-keymap": "https://esm.sh/prosemirror-keymap@1.2.3",
+    "prosemirror-commands": "https://esm.sh/prosemirror-commands@1.7.2",
+    "prosemirror-schema-basic": "https://esm.sh/prosemirror-schema-basic@1.2.5"
+  }
+}
+</script>
+
+<script type="module">
+import {schema} from "prosemirror-schema-basic"
+import {EditorState} from "prosemirror-state"
+import {EditorView} from "prosemirror-view"
+import {history, undo, redo} from "prosemirror-history"
+import {keymap} from "prosemirror-keymap"
+import {baseKeymap, toggleMark} from "prosemirror-commands"
+
+// 1. Documento inicial (sem HTML: JSON é o formato canônico)
+const doc = schema.node("doc", null, [
+  schema.node("paragraph", null, [schema.text("Escreva aqui. Selecione e use Mod-b.")])
+])
+
+// 2. Estado: doc + seleção + plugins
+let state = EditorState.create({
+  schema,
+  doc,
+  plugins: [
+    history(),
+    keymap({
+      "Mod-b": toggleMark(schema.marks.strong),
+      "Mod-i": toggleMark(schema.marks.em),
+      "Mod-z": undo,
+      "Shift-Mod-z": redo
+    }),
+    // baseKeymap só cobre Enter/Backspace/Delete/Mod-a (commands.ts:752-760)
+    keymap(baseKeymap)
+  ]
+})
+
+// 3. View. Sem dispatchTransaction, a view aplicaria o tr sozinha (index.ts:511-515);
+//    aqui controlamos o estado para poder exibir o JSON.
+const view = new EditorView(document.querySelector("#editor"), {
+  state,
+  dispatchTransaction(tr) {
+    state = state.apply(tr)
+    view.updateState(state)
+  },
+  // A11y é responsabilidade do integrador: o core não emite aria/role (index.ts:519-533).
+  attributes: {role: "textbox", "aria-multiline": "true", "aria-label": "Editor de exemplo"}
+})
+
+view.focus()
+
+document.querySelectorAll("button[data-cmd]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const cmd = btn.dataset.cmd
+    if (cmd === "json") {
+      const out = document.querySelector("#out")
+      out.hidden = false
+      out.textContent = JSON.stringify(state.doc.toJSON(), null, 2)
+    } else if (cmd === "undo") {
+      undo(state, tr => view.dispatch(tr))
+    } else if (cmd === "redo") {
+      redo(state, tr => view.dispatch(tr))
+    } else {
+      toggleMark(schema.marks[cmd])(state, tr => view.dispatch(tr))
+    }
+  })
+})
+</script>

@@ -1,0 +1,13 @@
+[package]
+name = "taino-edit-dossie-exemplo"
+version = "0.1.0"
+edition = "2021"
+
+# Dependências por caminho para o checkout do dossiê (ref/ é read-only para nós).
+# Do diretório dossie/taino-edit/exemplos/ até a raiz do repo: ../../..
+[dependencies]
+taino-edit-core = { path = "../../../ref/taino-edit/crates/taino-edit-core" }
+taino-edit-extensions = { path = "../../../ref/taino-edit/crates/taino-edit-extensions" }
+serde_json = "1"
+
+[workspace]

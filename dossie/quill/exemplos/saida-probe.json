@@ -1,0 +1,190 @@
+{
+  "version": "2.0.3",
+  "loadDeltaOfInitialHTML": [
+    {
+      "insert": "Hello World!\nSome initial "
+    },
+    {
+      "attributes": {
+        "bold": true
+      },
+      "insert": "bold"
+    },
+    {
+      "insert": " text\n\n"
+    }
+  ],
+  "containerClass": "ql-container ql-snow",
+  "rootClass": "ql-editor",
+  "rootContentEditable": "true",
+  "rootRole": null,
+  "rootAriaLabel": null,
+  "initialLength": 37,
+  "afterEditsDelta": [
+    {
+      "attributes": {
+        "bold": true
+      },
+      "insert": "X"
+    },
+    {
+      "attributes": {
+        "italic": true
+      },
+      "insert": "Hello"
+    },
+    {
+      "insert": " World"
+    },
+    {
+      "attributes": {
+        "header": 2
+      },
+      "insert": "\n"
+    },
+    {
+      "insert": "!\nSome initial "
+    },
+    {
+      "attributes": {
+        "bold": true
+      },
+      "insert": "bold"
+    },
+    {
+      "insert": " text\n\n"
+    }
+  ],
+  "afterEditsHTML": "<h2><strong>X</strong><em>Hello</em>&nbsp;World</h2><p>!</p><p>Some&nbsp;initial&nbsp;<strong>bold</strong>&nbsp;text</p><p></p>",
+  "afterUndo": [
+    {
+      "insert": "Hello World!\nSome initial "
+    },
+    {
+      "attributes": {
+        "bold": true
+      },
+      "insert": "bold"
+    },
+    {
+      "insert": " text\n\n"
+    }
+  ],
+  "afterRedoLength": 39,
+  "clipboardConvert": [
+    {
+      "insert": "negrito e ",
+      "attributes": {
+        "bold": true
+      }
+    },
+    {
+      "insert": "itálico",
+      "attributes": {
+        "bold": true,
+        "italic": true
+      }
+    },
+    {
+      "insert": "\n",
+      "attributes": {
+        "bold": true
+      }
+    },
+    {
+      "insert": "um\ndois\n",
+      "attributes": {
+        "list": "bullet"
+      }
+    }
+  ],
+  "urlSanitizedHTML": "<h2><strong>X</strong><em>Hello</em>&nbsp;World</h2><p>!</p><p>Some&nbsp;initial&nbsp;<strong>bold</strong>&nbsp;text</p><p><a href=\"about:blank\" rel=\"noopener noreferrer\" target=\"_blank\">x</a>&nbsp;<img src=\"//:0\"></p>",
+  "customFormatDelta": [
+    {
+      "attributes": {
+        "highlight": "true",
+        "bold": true
+      },
+      "insert": "X"
+    },
+    {
+      "attributes": {
+        "highlight": "true",
+        "italic": true
+      },
+      "insert": "He"
+    },
+    {
+      "attributes": {
+        "italic": true
+      },
+      "insert": "llo"
+    }
+  ],
+  "customFormatDOM": "<h2><strong class=\"ql-highlight-true\">X</strong><em class=\"ql-highlight-true\">He</em><em>llo</em> World</h2><p>!</p><p>Some initial <strong>bold</strong> text</p><p><a href=\"about:blank\" rel=\"noopener noreferrer\" target=\"_blank\">x</a> <img src=\"//:0\"></p>",
+  "disabledContentEditable": "false",
+  "disabledReturnsFalseForUserEdits": 0,
+  "toolbarClass": "ql-toolbar ql-snow",
+  "toolbarRole": "toolbar",
+  "toolbarButtons": [
+    {
+      "cls": "ql-bold",
+      "label": "bold",
+      "pressed": "false"
+    },
+    {
+      "cls": "ql-italic",
+      "label": "italic",
+      "pressed": "false"
+    },
+    {
+      "cls": "ql-list",
+      "label": "list: ordered",
+      "pressed": "false"
+    },
+    {
+      "cls": "ql-link",
+      "label": "link",
+      "pressed": "false"
+    },
+    {
+      "cls": "ql-clean",
+      "label": "clean",
+      "pressed": "false"
+    }
+  ],
+  "css.editor": {
+    "whiteSpace": "pre-wrap",
+    "fontFamily": "Helvetica, Arial, sans-serif",
+    "fontSize": "13px",
+    "pMargin": "0px",
+    "liListStyle": "disc"
+  },
+  "noCss.editor": {
+    "whiteSpace": "pre-wrap",
+    "fontFamily": "Helvetica, Arial, sans-serif",
+    "pMargin": "0px",
+    "liListStyle": "disc",
+    "olPaddingLeft": "15px"
+  },
+  "noCss.html": "<p>linha 1</p><p>linha 2</p>",
+  "noCss.deltaRoundTrip": [
+    {
+      "insert": "linha 1\nlinha 2\n"
+    }
+  ],
+  "css.list": {
+    "listStyleType": "none",
+    "liBefore": "none",
+    "olPaddingLeft": "19.5px"
+  },
+  "css.html": "<p>item 1</p><ol><li data-list=\"ordered\"><span class=\"ql-ui\" contenteditable=\"false\"></span>item 2</li></ol><div class=\"ql-code-block-container\" spellcheck=\"false\"><div class=\"ql-code-block\">code</div></div>",
+  "bench": {
+    "setContents1000LinesMs": 37.2,
+    "getContentsMs": 0.1,
+    "deltaLength": 48890,
+    "twoHundredInsertsMs": 334.6,
+    "nodesInEditor": 1000
+  },
+  "ok": true
+}

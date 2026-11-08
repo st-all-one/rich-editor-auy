@@ -1,0 +1,7 @@
+chart v1 "Política de retry" direction=lr layout=flow lang=pt-BR
+
+node api "API Gateway" fill=blue
+node retry "Retry ×3" fill=amber
+node dlq "DLQ" fill=red shape=cylinder
+edge api -> retry "5xx"
+edge retry -> dlq "esgotado" style=dashed

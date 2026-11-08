@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>probe</title>
+<link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
+</head>
+<body>
+<div id="toolbar"></div>
+<div id="editor"><p>Hello World!</p><p>Some initial <strong>bold</strong> text</p><p><br></p></div>
+<div id="editor2"></div>
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
+<script>
+const out = {};
+function put(k, v) { out[k] = v; }
+try {
+  const quill = new Quill('#editor', {
+    theme: 'snow',
+    modules: { toolbar: ['bold', 'italic', { header: [1, 2, false] }, { list: 'ordered' }, 'link', 'clean'] },
+    placeholder: 'Escreva...',
+  });
+
+  put('version', Quill.version);
+  put('loadDeltaOfInitialHTML', quill.getContents().ops);
+  put('containerClass', quill.container.className);
+  put('rootClass', quill.root.className);
+  put('rootContentEditable', quill.root.getAttribute('contenteditable'));
+  put('rootRole', quill.root.getAttribute('role'));
+  put('rootAriaLabel', quill.root.getAttribute('aria-label'));
+  put('initialLength', quill.getLength());
+
+  // edição via API (equivalente ao que o teclado produz em Delta)
+  quill.insertText(0, 'X', 'bold', true, Quill.sources.USER);
+  quill.formatText(1, 5, 'italic', true, Quill.sources.USER);
+  quill.insertText(12, '\n', { header: 2, bold: null }, Quill.sources.USER);
+  put('afterEditsDelta', quill.getContents().ops);
+  put('afterEditsHTML', quill.getSemanticHTML());
+
+  // histórico: undo/redo
+  quill.history.undo();
+  put('afterUndo', quill.getContents().ops);
+  quill.history.redo();
+  put('afterRedoLength', quill.getContents().length());
+
+  // clipboard: colar HTML externo -> Delta (Word/Google Docs style)
+  const pasted = quill.clipboard.convert({
+    html: '<meta charset="utf-8"><b style="font-weight:normal"><p><span style="font-weight:700">negrito</span> e <span style="font-style:italic">itálico</span></p></b><ul><li>um</li><li>dois</li></ul>',
+    text: 'negrito e itálico\num\ndois',
+  });
+  put('clipboardConvert', pasted.ops);
+  quill.setSelection(0, 0, Quill.sources.USER);
+  quill.clipboard.dangerouslyPasteHTML(quill.getLength() - 1, '<p><a href="javascript:alert(1)">x</a> <img src="x.png" onerror="alert(2)"></p>', Quill.sources.USER);
+  put('urlSanitizedHTML', quill.getSemanticHTML());
+
+  // extensão: registra um formato inline customizado (highlight) e aplica
+  const Parchment = Quill.import('parchment');
+  const Highlight = new Parchment.ClassAttributor('highlight', 'ql-highlight', { scope: Parchment.Scope.INLINE });
+  Quill.register(Highlight);
+  quill.formatText(0, 3, 'highlight', true, Quill.sources.USER);
+  put('customFormatDelta', quill.getContents().ops.slice(0, 3));
+  put('customFormatDOM', quill.root.innerHTML.slice(0, 260));
+
+  // readOnly: desabilita contenteditable sem destruir o modelo
+  quill.disable();
+  put('disabledContentEditable', quill.root.getAttribute('contenteditable'));
+  put('disabledReturnsFalseForUserEdits', (quill.insertText(0, 'Z', Quill.sources.USER).ops.length));
+  quill.enable();
+
+  // toolbar: DOM gerado e a11y
+  const tb = quill.getModule('toolbar');
+  put('toolbarClass', tb.container.className);
+  put('toolbarRole', tb.container.getAttribute('role'));
+  put('toolbarButtons', Array.from(tb.container.querySelectorAll('button')).slice(0, 5).map(b => ({
+    cls: b.className, label: b.getAttribute('aria-label'), pressed: b.getAttribute('aria-pressed'),
+  })));
+
+  // CSS aplicado x ausente
+  const p = quill.root.querySelector('p');
+  put('css.editor', {
+    whiteSpace: getComputedStyle(quill.root).whiteSpace,
+    fontFamily: getComputedStyle(quill.root).fontFamily,
+    fontSize: getComputedStyle(quill.root).fontSize,
+    pMargin: p ? getComputedStyle(p).margin : null,
+    liListStyle: getComputedStyle(quill.root.querySelector('li') || quill.root).listStyleType,
+  });
+
+  // segundo editor SEM o CSS do Quill (mas com o mesmo JS)
+  const q2 = new Quill('#editor2'); // tema default, sem toolbar
+  const Delta = Quill.import('delta');
+  q2.setContents(new Delta().insert('linha 1\n').insert('linha 2', { list: 'ordered' }).insert('\n'));
+  put('noCss.editor', {
+    whiteSpace: getComputedStyle(q2.root).whiteSpace,
+    fontFamily: getComputedStyle(q2.root).fontFamily,
+    pMargin: getComputedStyle(q2.root.querySelector('p')).margin,
+    liListStyle: getComputedStyle(q2.root.querySelector('li') || q2.root).listStyleType,
+    olPaddingLeft: getComputedStyle(q2.root.querySelector('ol') || q2.root).paddingLeft,
+  });
+  put('noCss.html', q2.root.innerHTML);
+  put('noCss.deltaRoundTrip', q2.getContents().ops);
+
+  // lista e code block no editor COM css
+  quill.setContents(new Delta()
+    .insert('item 1\n').insert('item 2\n', { list: 'ordered' })
+    .insert('code\n', { 'code-block': true }), Quill.sources.API);
+  put('css.list', {
+    listStyleType: getComputedStyle(quill.root.querySelector('li')).listStyleType,
+    liBefore: getComputedStyle(quill.root.querySelector('li'), '::before').content,
+    olPaddingLeft: getComputedStyle(quill.root.querySelector('ol')).paddingLeft,
+  });
+  put('css.html', quill.root.innerHTML);
+
+  // benchmark: 1000 parágrafos + 200 edições de 1 caractere
+  const big = new Delta();
+  for (let i = 0; i < 1000; i += 1) big.insert('Parágrafo número ' + i + ' com algum texto para medir.\n');
+  const t0 = performance.now();
+  quill.setContents(big, Quill.sources.API);
+  const t1 = performance.now();
+  const got = quill.getContents();
+  const t2 = performance.now();
+  for (let i = 0; i < 200; i += 1) {
+    quill.insertText(i * 3, 'a', Quill.sources.API);
+  }
+  const t3 = performance.now();
+  put('bench', {
+    setContents1000LinesMs: Math.round((t1 - t0) * 10) / 10,
+    getContentsMs: Math.round((t2 - t1) * 10) / 10,
+    deltaLength: got.length(),
+    twoHundredInsertsMs: Math.round((t3 - t2) * 10) / 10,
+    nodesInEditor: quill.root.querySelectorAll('*').length,
+  });
+
+  put('ok', true);
+} catch (e) {
+  put('error', String(e && e.stack || e));
+}
+const pre = document.createElement('pre');
+pre.id = 'out';
+pre.textContent = JSON.stringify(out, null, 1).replace(/</g, '\\u003c');
+document.body.appendChild(pre);
+</script>
+</body>
+</html>

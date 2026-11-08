@@ -1,0 +1,92 @@
+name: CI
+
+# Push em qualquer branch + PRs. O release (binários por plataforma) fica no `release.yml`,
+# disparado por tag `v*` — aqui não se compila release.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  check:
+    name: fmt + clippy + test + file-length
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      # `cargo test --workspace` já cobre doc-tests.
+      - run: make check
+
+  windows:
+    name: smoke Windows (wrapper de scripts, D185)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99
+      - uses: Swatinem/rust-cache@v2
+      # Smoke cross-platform do wrapper fino: `bash` em Unix, PowerShell em Windows (D185).
+      - run: cargo test -p knudge-cli --bin kd commands::script
+
+  supply-chain:
+    name: deny + audit + machete + typos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-deny cargo-audit cargo-machete --locked
+      - run: cargo deny check
+      - run: cargo audit
+      - run: cargo machete
+      - uses: crate-ci/typos@master
+
+  miri:
+    name: miri (núcleo puro, smoke)
+    runs-on: ubuntu-latest
+    env:
+      # `rust-toolchain.toml` fixa 1.99; miri só existe no nightly.
+      RUSTUP_TOOLCHAIN: nightly
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo miri setup
+      # Suíte mínima `tests/miri_smoke.rs` (segundos): o core é `#![forbid(unsafe_code)]` e a
+      # cobertura funcional fica no `make check`. `-Zmiri-disable-isolation` evita o `getcwd`
+      # do proptest (o core usa fakes), que o isolamento bloqueia.
+      - run: "cargo miri test -p knudge-core --test miri_smoke"
+        env:
+          PROPTEST_DISABLE_FAILURE_PERSISTENCE: "1"
+          MIRIFLAGS: "-Zmiri-disable-isolation"
+
+  fuzz:
+    name: fuzz (TOON + JSONL, smoke)
+    runs-on: ubuntu-latest
+    env:
+      # `rust-toolchain.toml` fixa 1.99; os sanitizers do cargo-fuzz exigem nightly.
+      RUSTUP_TOOLCHAIN: nightly
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-fuzz --locked
+      - run: cargo fuzz build
+      - name: smoke de 30s por alvo
+        run: |
+          for target in toon_parse jsonl_decode; do
+            cargo fuzz run "$target" -- -max_total_time=30
+          done

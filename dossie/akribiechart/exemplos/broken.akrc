@@ -1,0 +1,4 @@
+chart v1 "Quebrado"
+node a "A" shape=trapezio
+node a "Duplicado"
+edge a -> fantasma

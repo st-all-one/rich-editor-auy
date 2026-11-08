@@ -1,0 +1,21 @@
+# Harness mínimo do dossiê: usa `akribie-core` como *biblioteca*, sem CLI.
+#
+# A dependência é um `path` para o checkout de `ref/akribiechart`; nada em `ref/` é alterado.
+#
+# NOTA VERIFICADA (ver `../README.md` §6.1): `default-features = false` — que o comentário de
+# `crates/akribie-core/Cargo.toml:12-16` descreve como "deixa só SVG/scene/excalidraw" — **não
+# compila**. Não existe `#[cfg(feature = "raster")]` em nenhum lugar do crate; `emit/raster.rs`
+# usa `usvg`/`tiny-skia`/`image` incondicionalmente. Por isso o harness usa as features padrão.
+#
+# Rodar a partir de `dossie/akribiechart/exemplos/harness`:
+#   CARGO_TARGET_DIR=/tmp/dossie-akribie-target cargo run --offline --quiet
+[package]
+name = "akribie-harness"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+akribie-core = { path = "../../../../ref/akribiechart/crates/akribie-core" }
+
+[workspace]

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Summernote — exemplo mínimo (jQuery + init)</title>
+
+  <!-- 1) jQuery (obrigatório: o plugin é `$.fn.summernote`) -->
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+  <!-- 2) A build "lite": não exige Bootstrap. (bs4/bs5 exigem Bootstrap CSS+JS) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/summernote@0.9.1/dist/summernote-lite.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/summernote@0.9.1/dist/summernote-lite.min.js"></script>
+
+  <style>
+    /* O editor NÃO assume layout do host; o host precisa dar largura/altura. */
+    body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; }
+    .note-editable { min-height: 160px; }
+  </style>
+</head>
+<body>
+  <h1>Exemplo mínimo</h1>
+
+  <!-- A fonte de verdade é este <textarea>: ele continua no DOM (escondido),
+       guarda o HTML e é o alvo de <form>/serialização. -->
+  <textarea id="body" name="body"><p>Olá, <b>mundo</b>.</p></textarea>
+
+  <p>
+    <button id="get">ler HTML</button>
+    <button id="set">gravar HTML</button>
+    <button id="plain">desligar formatação (removeFormat)</button>
+  </p>
+  <pre id="out"></pre>
+
+  <script>
+    $(function() {
+      // Init: substitui o textarea por um .note-editor; o textarea vira o "note".
+      $('#body').summernote({
+        height: 220,
+        tabSize: 2,
+        placeholder: 'Escreva algo…',
+        toolbar: [
+          ['style', ['style']],
+          ['font', ['bold', 'italic', 'underline', 'clear']],
+          ['para', ['ul', 'ol', 'paragraph']],
+          ['insert', ['link', 'picture', 'video']],
+          ['view', ['codeview', 'help']],
+        ],
+        callbacks: {
+          // Disparado em input/change: o HTML sai do contenteditable.
+          onChange: function(html) {
+            $('#out').text('onChange → ' + html);
+          },
+        },
+      });
+
+      $('#get').on('click', function() {
+        // API de leitura: retorna o innerHTML do .note-editable.
+        $('#out').text('code() → ' + $('#body').summernote('code'));
+      });
+
+      $('#set').on('click', function() {
+        $('#body').summernote('code', '<h2>Título</h2><p>Novo <i>conteúdo</i>.</p>');
+      });
+
+      $('#plain').on('click', function() {
+        $('#body').summernote('removeFormat');
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>interactive</title>
+<link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
+</head>
+<body>
+<div id="editor"><p>initial</p></div>
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
+<script>
+window.quill = new Quill('#editor', {
+  theme: 'snow',
+  modules: { toolbar: [['bold', 'italic'], [{ list: 'ordered' }], ['link']] },
+});
+window.Quill = Quill;
+window.getState = () => ({
+  ops: window.quill.getContents().ops,
+  html: window.quill.getSemanticHTML(),
+  range: window.quill.getSelection(),
+});
+</script>
+</body>
+</html>

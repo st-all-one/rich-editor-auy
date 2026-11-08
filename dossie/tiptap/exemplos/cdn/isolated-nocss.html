@@ -1,0 +1,59 @@
+<!doctype html>
+<!--
+  Verificação ISOLADA de `injectCSS: false` (revisão independente do dossiê).
+  Motivo: medir "não injetou CSS" num segundo editor da MESMA página é inválido —
+  `createStyleTag` reaproveita `style[data-tiptap-style]` (createStyleTag.ts:2-8),
+  então dois editores com CSS também dão 1 tag. Aqui o editor roda dentro de um
+  iframe com documento próprio, e a contagem é feita no <head> desse iframe.
+  Tiptap fixado em 3.30.3 (mesma versão declarada em ref/tiptap).
+-->
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>tiptap — injectCSS:false isolado</title>
+  </head>
+  <body>
+    <pre id="out">pending</pre>
+    <script type="module">
+      const out = { error: null }
+      window.__RESULT__ = out
+
+      try {
+        const V = '3.30.3'
+        const { Editor } = await import(`https://esm.sh/@tiptap/core@${V}`)
+        const { default: StarterKit } = await import(`https://esm.sh/@tiptap/starter-kit@${V}`)
+
+        const iframe = document.createElement('iframe')
+        document.body.appendChild(iframe)
+        const idoc = iframe.contentDocument
+        idoc.open()
+        idoc.write('<!doctype html><html><head></head><body><div id="x"></div></body></html>')
+        idoc.close()
+
+        const editor = new Editor({
+          element: idoc.getElementById('x'),
+          extensions: [StarterKit],
+          content: '<p>sem css</p>',
+          injectCSS: false,
+        })
+
+        out.styleNodes = idoc.head.querySelectorAll('style, link').length
+        out.className = editor.view.dom.className
+        out.role = editor.view.dom.getAttribute('role')
+        out.tabindex = editor.view.dom.getAttribute('tabindex')
+
+        // o editor continua funcional sem o CSS injetado
+        editor.commands.selectAll()
+        out.toggleBold = editor.commands.toggleBold()
+        out.html = editor.getHTML()
+
+        editor.destroy()
+        out.outerDocStyleTags = document.head.querySelectorAll('style[data-tiptap-style]').length
+      } catch (error) {
+        out.error = String(error && error.stack ? error.stack : error)
+      }
+
+      document.getElementById('out').textContent = JSON.stringify(out)
+    </script>
+  </body>
+</html>

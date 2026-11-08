@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head>
+    <meta charset="utf-8">
+    <title>Quill mínimo</title>
+    <link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
+  </head>
+  <body>
+    <div id="toolbar" class="ql-toolbar ql-snow">
+      <button class="ql-bold" aria-label="Negrito" type="button" aria-pressed="false"><svg viewBox="0 0 18 18"><path class="ql-stroke" d="M5,4H9.5A2.5,2.5,0,0,1,12,6.5v0A2.5,2.5,0,0,1,9.5,9H5A0,0,0,0,1,5,9V4A0,0,0,0,1,5,4Z"></path><path class="ql-stroke" d="M5,9h5.5A2.5,2.5,0,0,1,13,11.5v0A2.5,2.5,0,0,1,10.5,14H5a0,0,0,0,1,0,0V9A0,0,0,0,1,5,9Z"></path></svg></button>
+      <button class="ql-italic" aria-label="Itálico" type="button" aria-pressed="false"><svg viewBox="0 0 18 18"><line class="ql-stroke" x1="7" x2="13" y1="4" y2="4"></line><line class="ql-stroke" x1="5" x2="11" y1="14" y2="14"></line><line class="ql-stroke" x1="8" x2="10" y1="14" y2="4"></line></svg></button>
+      <button class="ql-link" aria-label="Link" type="button" aria-pressed="false"><svg viewBox="0 0 18 18"><line class="ql-stroke" x1="7" x2="11" y1="7" y2="11"></line><path class="ql-even ql-stroke" d="M8.9,4.577a3.476,3.476,0,0,1,.36,4.679A3.476,3.476,0,0,1,4.577,8.9C3.185,7.5,2.035,6.4,4.217,4.217S7.5,3.185,8.9,4.577Z"></path><path class="ql-even ql-stroke" d="M13.423,9.1a3.476,3.476,0,0,0-4.679-.36,3.476,3.476,0,0,0,.36,4.679c1.392,1.392,2.5,2.542,4.679.36S14.815,10.5,13.423,9.1Z"></path></svg></button>
+    </div>
+    <div id="editor" class="ql-container ql-snow"><div class="ql-editor" contenteditable="true"><p>Hello World!</p><p>Some initial <strong>bold</strong> text</p><p><br></p></div><div class="ql-tooltip ql-hidden"><a class="ql-preview" rel="noopener noreferrer" target="_blank" href="about:blank"></a><input type="text" data-formula="e=mc^2" data-link="https://quilljs.com" data-video="Embed URL"><a class="ql-action"></a><a class="ql-remove"></a></div></div>
+    <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
+    <script>
+      const quill = new Quill('#editor', {
+        theme: 'snow',
+        modules: { toolbar: '#toolbar' },
+      });
+
+      // API de documento: a fonte de verdade é o Delta, não o DOM.
+      const delta = quill.getContents();
+      console.log('delta inicial', JSON.stringify(delta.ops));
+
+      quill.on('text-change', (change, oldContents, source) => {
+        console.log('text-change', source, change.ops);
+      });
+
+      // Exemplo de persistência: serialize o Delta, nunca innerHTML.
+      window.salvar = () => JSON.stringify(quill.getContents());
+      window.carregar = (json) => quill.setContents(JSON.parse(json));
+    </script>
+  
+
+</body></html>

@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@common/*": ["../../../ref/Zettlr/source/common/*"],
+      "@providers/*": ["../../../ref/Zettlr/source/app/service-providers/*"],
+      "@dts/*": ["../../../ref/Zettlr/source/types/*"]
+    }
+  }
+}

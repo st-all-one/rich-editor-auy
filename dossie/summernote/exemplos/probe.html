@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Summernote 0.9.1 — sonda de comportamento</title>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/summernote@0.9.1/dist/summernote-lite.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/summernote@0.9.1/dist/summernote-lite.min.js"></script>
+</head>
+<body>
+  <!-- O <textarea> permanece no DOM e é a fonte de verdade do HTML. -->
+  <textarea id="note" name="note"><p>Hello <b>world</b></p></textarea>
+
+  <!-- Segunda instância para medir maxTextLength isoladamente. -->
+  <textarea id="limited" name="limited"></textarea>
+
+  <pre id="log">(running)</pre>
+
+<script>
+(function() {
+  var out = [];
+  var pre = document.getElementById('log');
+
+  function rec(name, value) {
+    var v = (typeof value === 'string') ? value : JSON.stringify(value);
+    out.push(name + '\t' + v);
+    pre.textContent = out.join('\n');
+  }
+
+  function step(name, fn) {
+    return function() {
+      try {
+        rec(name, fn());
+      } catch (e) {
+        rec(name, 'THREW ' + (e && e.name) + ': ' + (e && e.message));
+      }
+    };
+  }
+
+  function editable() { return document.querySelector('.note-editable'); }
+
+  function code() { return $('#note').summernote('code'); }
+
+  // Select the first occurrence of `needle` inside the editable and let
+  // summernote record the range (it listens on keyup/keydown/mouseup).
+  function selectText(needle) {
+    var root = editable();
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    var node;
+    while ((node = walker.nextNode())) {
+      var i = node.nodeValue.indexOf(needle);
+      if (i >= 0) {
+        var r = document.createRange();
+        r.setStart(node, i);
+        r.setEnd(node, i + needle.length);
+        var s = window.getSelection();
+        s.removeAllRanges();
+        s.addRange(r);
+        root.focus();
+        $(root).trigger($.Event('keyup', { keyCode: 39 }));
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function chain(steps) {
+    var i = 0;
+    function next() {
+      if (i >= steps.length) {
+        rec('done', 'all steps executed');
+        document.title = 'DONE';
+        return;
+      }
+      steps[i++]();
+      setTimeout(next, 60);
+    }
+    next();
+  }
+
+  $(function() {
+    var steps = [
+      step('env.jquery', function() { return $.fn.jquery; }),
+      step('env.summernote', function() { return $.summernote.version; }),
+      step('env.execCommandSupported.bold', function() {
+        return document.queryCommandSupported('bold');
+      }),
+      step('env.execCommandSupported.defaultParagraphSeparator', function() {
+        return document.queryCommandSupported('defaultParagraphSeparator');
+      }),
+
+      // ---------- init ----------
+      step('init.notes', function() {
+        $('#note').summernote({ height: 160, tabSize: 2 });
+        $('#limited').summernote({ height: 80, maxTextLength: 10 });
+        return 'ok';
+      }),
+      step('init.layout', function() {
+        var ed = document.querySelector('.note-editor');
+        return {
+          editorClasses: ed.className,
+          editorChildTags: Array.prototype.map.call(ed.children, function(c) { return c.tagName + '.' + c.className; }),
+          noteHidden: $('#note').is(':hidden'),
+          noteTag: $('#note').prop('tagName'),
+        };
+      }),
+      step('a11y.editableAttrs', function() {
+        var e = editable();
+        return {
+          tag: e.tagName,
+          contenteditable: e.getAttribute('contenteditable'),
+          role: e.getAttribute('role'),
+          ariaMultiline: e.getAttribute('aria-multiline'),
+          spellcheck: e.getAttribute('spellcheck'),
+          autocorrect: e.getAttribute('autocorrect'),
+          tabindex: e.getAttribute('tabindex'),
+        };
+      }),
+      step('a11y.toolbar', function() {
+        var tb = document.querySelector('.note-toolbar');
+        var btns = document.querySelectorAll('.note-toolbar button');
+        var neg = 0;
+        btns.forEach(function(b) { if (b.getAttribute('tabindex') === '-1') { neg++; } });
+        var noLabel = 0;
+        btns.forEach(function(b) {
+          if (!b.getAttribute('aria-label') && !b.getAttribute('title')) { noLabel++; }
+        });
+        return {
+          role: tb && tb.getAttribute('role'),
+          buttons: btns.length,
+          buttonsTabindexMinus1: neg,
+          buttonsWithoutLabel: noLabel,
+          statusOutput: (function() {
+            var o = document.querySelector('.note-status-output');
+            return o ? { role: o.getAttribute('role'), live: o.getAttribute('aria-live') } : null;
+          })(),
+        };
+      }),
+      step('init.firstButtonHTML', function() {
+        return document.querySelector('.note-toolbar button').outerHTML.slice(0, 220);
+      }),
+
+      // ---------- leitura/escrita ----------
+      step('code.initial', function() { return code(); }),
+      step('code.roundtrip', function() {
+        $('#note').summernote('code', '<p>Hello <i>world</i></p>');
+        return code();
+      }),
+      step('code.normalization', function() {
+        // HTML inválido/aninhado de forma ilegal: quem "conserta" é o parser do browser.
+        $('#note').summernote('code', '<p>a<div>b</div>c</p><ul><p>li?</p></ul>');
+        return code();
+      }),
+      step('code.emptyValue', function() {
+        $('#note').summernote('code', '');
+        return { code: code(), isEmpty: $('#note').summernote('isEmpty') };
+      }),
+      step('code.rawWhitespace', function() {
+        $('#note').summernote('code', '<p>  espaços  </p>\n\n<!-- comentário -->');
+        return code();
+      }),
+
+      // ---------- formatação ----------
+      step('format.boldSetup', function() {
+        $('#note').summernote('code', '<p>alpha beta gamma</p>');
+        return selectText('beta');
+      }),
+      step('format.boldClick', function() {
+        $('.note-btn-bold').first().trigger('click');
+        return { html: code(), buttonActiveClass: $('.note-btn-bold').first().hasClass('active') };
+      }),
+      step('format.boldToggleOff', function() {
+        selectText('beta');
+        $('.note-btn-bold').first().trigger('click');
+        return code();
+      }),
+      step('format.italicShortcut', function() {
+        $('#note').summernote('code', '<p>alpha beta gamma</p>');
+        selectText('gamma');
+        $(editable()).trigger($.Event('keydown', { keyCode: 73, ctrlKey: true }));
+        return code();
+      }),
+      step('format.h2', function() {
+        $('#note').summernote('code', '<p>título aqui</p>');
+        selectText('título');
+        $('#note').summernote('formatH2');
+        return code();
+      }),
+      step('format.styleWithCSS', function() {
+        $('#note').summernote('destroy');
+        $('#note').summernote({ height: 120, styleWithCSS: true });
+        $('#note').summernote('code', '<p>alpha beta</p>');
+        selectText('beta');
+        $('.note-btn-bold').first().trigger('click');
+        return code();
+      }),
+
+      // ---------- undo/redo ----------
+      step('history.setup', function() {
+        $('#note').summernote('destroy');
+        $('#note').summernote({ height: 120 });
+        $('#note').summernote('code', '<p>one</p>');
+        $('#note').summernote('code', '<p>one two</p>');
+        $('#note').summernote('code', '<p>one two three</p>');
+        return code();
+      }),
+      step('history.undo', function() {
+        $('#note').summernote('undo');
+        return code();
+      }),
+      step('history.undo2', function() {
+        $('#note').summernote('undo');
+        return code();
+      }),
+      step('history.redo', function() {
+        $('#note').summernote('redo');
+        return code();
+      }),
+
+      // ---------- colar/sanitizar ----------
+      step('paste.scriptTag', function() {
+        $('#note').summernote('code', '<p>x</p>');
+        $('#note').summernote('pasteHTML', '<p>ok</p><scr' + 'ipt>window.__xss=1</scr' + 'ipt>');
+        return { html: code(), xssRan: String(window.__xss) };
+      }),
+      step('paste.eventHandlerAttr', function() {
+        $('#note').summernote('code', '<p>x</p>');
+        $('#note').summernote('pasteHTML', '<img src="does-not-exist.png" onerror="window.__xss2=1">');
+        return { html: code(), xss2Ran: String(window.__xss2) };
+      }),
+      step('paste.javascriptUrl', function() {
+        $('#note').summernote('code', '<p>x</p>');
+        $('#note').summernote('pasteHTML', '<a href="javascript:window.__xss3=1">click</a>');
+        return code();
+      }),
+      step('paste.blockWrapper', function() {
+        $('#note').summernote('code', '<p>abc</p>');
+        selectText('abc');
+        $('#note').summernote('pasteHTML', '<h2>T</h2><p>P</p>');
+        return code();
+      }),
+      step('link.create', function() {
+        $('#note').summernote('code', '<p>veja o site</p>');
+        selectText('site');
+        $('#note').summernote('createLink', { url: 'example.com', text: 'site', isNewWindow: true });
+        return code();
+      }),
+
+      // ---------- mídia/tabela ----------
+      step('table.insert', function() {
+        $('#note').summernote('code', '<p>x</p>');
+        selectText('x');
+        $('#note').summernote('insertTable', '2x3');
+        return code().slice(0, 400);
+      }),
+      step('image.dataUrl', function() {
+        $('#note').summernote('code', '<p>x</p>');
+        selectText('x');
+        $('#note').summon = null;
+        $('#note').summernote('insertImage', 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7');
+        return 'queued';
+      }),
+      step('image.dataUrl.after', function() {
+        var html = code();
+        return { html: html.slice(0, 200), hasAlt: /alt=/.test(html), attrs: (html.match(/<img[^>]*>/) || [''])[0] };
+      }),
+
+      // ---------- codeview ----------
+      step('codeview.toggleOn', function() {
+        $('#note').summernote('codeview.toggle');
+        return { editorClass: document.querySelector('.note-editor').className, codable: $('.note-codable').val().slice(0, 160) };
+      }),
+      step('codeview.purifyOnExit', function() {
+        $('.note-codable').val('<p>a</p><scr' + 'ipt>window.__cv=1</scr' + 'ipt><iframe src="https://evil.example/x"></iframe>');
+        $('#note').summernote('codeview.toggle');
+        return { html: code(), cvRan: String(window.__cv) };
+      }),
+
+      // ---------- autosync / persistência ----------
+      step('persist.textareaValue', function() {
+        $('#note').summernote('code', '<p>persistido</p>');
+        return { textareaVal: $('#note').val(), html: $('#note').html() };
+      }),
+      step('persist.afterManualInput', function() {
+        var e = editable();
+        e.innerHTML = '<p>editado no DOM</p>';
+        $(e).trigger('input');
+        return 'input fired';
+      }),
+      step('persist.afterManualInputValue', function() {
+        return { textareaVal: $('#note').val() };
+      }),
+
+      // ---------- limites ----------
+      step('limit.setup', function() { return $('#limited').summernote('code'); }),
+      step('limit.insertText', function() {
+        $('#limited').summernote('code', '');
+        var e = document.querySelectorAll('.note-editable')[1];
+        e.focus();
+        $(e).trigger($.Event('keyup', { keyCode: 39 }));
+        $('#limited').summernote('insertText', '12345678901234567890');
+        return { html: $('#limited').summernote('code'), len: $('#limited').summernote('code').text().length };
+      }),
+
+      // ---------- teardown ----------
+      step('destroy', function() {
+        $('#note').summernote('destroy');
+        return {
+          editorsLeft: document.querySelectorAll('.note-editor').length,
+          noteVisible: $('#note').is(':visible'),
+          noteValue: $('#note').val(),
+        };
+      }),
+    ];
+
+    chain(steps);
+  });
+})();
+</script>
+</body>
+</html>

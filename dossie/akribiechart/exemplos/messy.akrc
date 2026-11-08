@@ -1,0 +1,5 @@
+chart   v1  "Retry"  theme=paper  layout=flow  direction=lr  lang=pt-BR
+
+node  retry  "Retry x3"  shape=cloud  fill=amber
+node api "API" fill=blue
+edge api -> retry  "5xx"

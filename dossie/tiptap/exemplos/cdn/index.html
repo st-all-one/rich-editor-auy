@@ -1,0 +1,79 @@
+<!doctype html>
+<!--
+  Exemplo mínimo REAL do Tiptap (JS puro, sem framework, sem bundler).
+  Carrega @tiptap/core e @tiptap/starter-kit via esm.sh (CDN ESM) e registra
+  o que o editor faz no DOM em window.__RESULT__, para inspeção automatizada.
+  Origem do conteúdo: adaptado de demos/src/Examples/Minimal/React/index.jsx
+  (docs/repo do Tiptap, MIT) e da API pública de Editor.ts.
+-->
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>tiptap smoke</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      const out = { steps: [], error: null }
+      window.__RESULT__ = out
+
+      try {
+        const { Editor } = await import('https://esm.sh/@tiptap/core@3')
+        const { default: StarterKit } = await import('https://esm.sh/@tiptap/starter-kit@3')
+        out.steps.push('imports-ok')
+
+        const editor = new Editor({
+          element: document.getElementById('app'),
+          extensions: [StarterKit],
+          content: '<p>hello</p>',
+        })
+        out.steps.push('editor-created')
+
+        const dom = editor.view.dom
+        out.dom = {
+          tagName: dom.tagName,
+          className: dom.className,
+          contentEditable: dom.getAttribute('contenteditable'),
+          role: dom.getAttribute('role'),
+          tabindex: dom.getAttribute('tabindex'),
+          ariaMultiline: dom.getAttribute('aria-multiline'),
+          hasInlineStyleAttr: dom.hasAttribute('style'),
+        }
+        out.styleTags = document.head.querySelectorAll('style[data-tiptap-style]').length
+        out.styleTagChars = document.head.querySelector('style[data-tiptap-style]')?.textContent.length ?? 0
+
+        // primeira edição + formatação via comando (sem UI)
+        editor.commands.selectAll()
+        out.canBold = editor.can().chain().toggleBold().run()
+        editor.commands.toggleBold()
+        out.htmlAfterBold = editor.getHTML()
+        out.jsonAfterBold = JSON.stringify(editor.getJSON())
+        out.isActiveBold = editor.isActive('bold')
+
+        // undo/redo via StarterKit (UndoRedo)
+        out.canUndo = editor.can().chain().undo().run()
+        editor.commands.undo()
+        out.htmlAfterUndo = editor.getHTML()
+        editor.commands.redo()
+        out.htmlAfterRedo = editor.getHTML()
+
+        // schema: conteúdo inválido é descartado silenciosamente por padrão
+        editor.commands.setContent('<p>ok</p><table><tr><td>x</td></tr></table>')
+        out.htmlAfterUnknownNode = editor.getHTML()
+
+        // serialização texto
+        out.text = editor.getText()
+
+        // conteúdo inicial com array de extensões customizadas: mark criada inline
+        out.nodeTypesInSchema = editor.schema.nodes ? Object.keys(editor.schema.nodes) : null
+        out.markTypesInSchema = editor.schema.marks ? Object.keys(editor.schema.marks) : null
+
+        editor.destroy()
+        out.steps.push('destroyed')
+      } catch (error) {
+        out.error = String(error && error.stack ? error.stack : error)
+        out.steps.push('failed')
+      }
+    </script>
+  </body>
+</html>

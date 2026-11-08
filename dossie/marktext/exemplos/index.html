@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Muya — exemplo mínimo</title>
+    <style>
+      /* Só o layout da página. A aparência do documento vem do CSS da engine,
+         que o main.ts importa de @muyajs/core/lib/style.css. */
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      .bar { display: flex; gap: 8px; padding: 8px; border-bottom: 1px solid #ddd; }
+      #editor { padding: 16px; }
+    </style>
+  </head>
+  <body>
+    <div class="bar">
+      <button id="save">getMarkdown()</button>
+      <button id="state">getState()</button>
+      <button id="undo">undo()</button>
+      <button id="redo">redo()</button>
+    </div>
+    <div id="editor"></div>
+    <pre id="out" style="padding: 8px; background: #f6f6f6; margin: 0; max-height: 30vh; overflow: auto;"></pre>
+    <script type="module" src="./minimal.ts"></script>
+  </body>
+</html>

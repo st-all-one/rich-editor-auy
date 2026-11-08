@@ -1,0 +1,231 @@
+[
+  [
+    "doc.ops",
+    [
+      {
+        "insert": "Olá"
+      },
+      {
+        "insert": " mundo",
+        "attributes": {
+          "bold": true
+        }
+      },
+      {
+        "insert": "\n",
+        "attributes": {
+          "header": 1
+        }
+      }
+    ]
+  ],
+  [
+    "doc.length",
+    10
+  ],
+  [
+    "edit.ops",
+    [
+      {
+        "retain": 4
+      },
+      {
+        "insert": "!"
+      },
+      {
+        "delete": 1
+      },
+      {
+        "retain": 5,
+        "attributes": {
+          "italic": true
+        }
+      }
+    ]
+  ],
+  [
+    "compose(doc, edit).ops",
+    [
+      {
+        "insert": "Olá"
+      },
+      {
+        "insert": " ",
+        "attributes": {
+          "bold": true
+        }
+      },
+      {
+        "insert": "!"
+      },
+      {
+        "insert": "undo",
+        "attributes": {
+          "italic": true,
+          "bold": true
+        }
+      },
+      {
+        "insert": "\n",
+        "attributes": {
+          "italic": true,
+          "header": 1
+        }
+      }
+    ]
+  ],
+  [
+    "diff(doc, afterEdit).ops",
+    [
+      {
+        "retain": 4
+      },
+      {
+        "insert": "!"
+      },
+      {
+        "delete": 1
+      },
+      {
+        "retain": 5,
+        "attributes": {
+          "italic": true
+        }
+      }
+    ]
+  ],
+  [
+    "diff igual a edit (sem padronização)",
+    true
+  ],
+  [
+    "invert(edit, base).ops",
+    [
+      {
+        "retain": 4
+      },
+      {
+        "attributes": {
+          "bold": true
+        },
+        "insert": "m"
+      },
+      {
+        "delete": 1
+      },
+      {
+        "retain": 5,
+        "attributes": {
+          "italic": null
+        }
+      }
+    ]
+  ],
+  [
+    "compose(compose(doc,edit),invert) == doc",
+    true
+  ],
+  [
+    "transform(a,b,priority=false).ops",
+    [
+      {
+        "retain": 2
+      },
+      {
+        "insert": "B"
+      }
+    ]
+  ],
+  [
+    "transform(a,b,priority=true).ops",
+    [
+      {
+        "retain": 2
+      },
+      {
+        "insert": "B"
+      }
+    ]
+  ],
+  [
+    "transformPosition(4) por b",
+    5
+  ],
+  [
+    "transformPosition(4) por b com priority",
+    5
+  ],
+  [
+    "compose(fmt1,fmt2).ops",
+    [
+      {
+        "retain": 4
+      },
+      {
+        "retain": 6,
+        "attributes": {
+          "color": "#ff0000",
+          "bold": null
+        }
+      }
+    ]
+  ],
+  [
+    "docFormatado.ops",
+    [
+      {
+        "insert": "Olá"
+      },
+      {
+        "insert": " ",
+        "attributes": {
+          "bold": true
+        }
+      },
+      {
+        "insert": "mundo"
+      },
+      {
+        "insert": "\n",
+        "attributes": {
+          "header": 1
+        }
+      }
+    ]
+  ],
+  [
+    "push insertThenDelete.ops",
+    [
+      {
+        "insert": "x"
+      },
+      {
+        "delete": 2
+      }
+    ]
+  ],
+  [
+    "chop remove retain final",
+    []
+  ],
+  [
+    "embed compose.ops",
+    [
+      {
+        "insert": {
+          "img": {
+            "src": "a.png"
+          }
+        },
+        "attributes": {
+          "img": {
+            "width": 10
+          }
+        }
+      },
+      {
+        "insert": "\n"
+      }
+    ]
+  ]
+]

@@ -1,0 +1,132 @@
+<!doctype html>
+<!--
+  Sonda de comportamento do Tiptap: teclado real, input rules, atalhos,
+  nó customizado, injectCSS:false, setEditable, unmount/remount e clipboard.
+  Depende de @tiptap/core + StarterKit via esm.sh. MIT (mesma licença do ref/).
+-->
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>tiptap probe</title>
+    <style>
+      /* CSS do APLICATIVO, não do Tiptap: prova que o editor aceita estilo externo. */
+      .superficie {
+        border: 1px dashed #888;
+        padding: 8px;
+        font: 16px/1.5 system-ui sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ed" class="superficie"></div>
+    <script type="module">
+      const { Editor, Node, mergeAttributes } = await import('https://esm.sh/@tiptap/core@3')
+      const { default: StarterKit } = await import('https://esm.sh/@tiptap/starter-kit@3')
+
+      // Nó customizado: bloco "callout" com atributo tipado, sem nenhum CSS embutido.
+      const Callout = Node.create({
+        name: 'callout',
+        group: 'block',
+        content: 'inline*',
+        defining: true,
+        addAttributes() {
+          return {
+            tone: {
+              default: 'info',
+              parseHTML: el => el.getAttribute('data-tone') || 'info',
+              renderHTML: attrs => ({ 'data-tone': attrs.tone }),
+            },
+          }
+        },
+        parseHTML() {
+          return [{ tag: 'div[data-callout]' }]
+        },
+        renderHTML({ HTMLAttributes }) {
+          return ['div', mergeAttributes({ 'data-callout': '' }, HTMLAttributes), 0]
+        },
+        addCommands() {
+          return {
+            insertCallout:
+              () =>
+              ({ commands }) =>
+                commands.insertContent({ type: 'callout', attrs: { tone: 'warn' }, content: [] }),
+          }
+        },
+      })
+
+      window.__PROBE__ = {}
+      window.editor = new Editor({
+        element: document.getElementById('ed'),
+        extensions: [StarterKit, Callout],
+        content: '<p>inicio</p>',
+      })
+
+      window.__PROBE__.dom = () => {
+        const d = window.editor.view.dom
+        return {
+          className: d.className,
+          role: d.getAttribute('role'),
+          tabindex: d.getAttribute('tabindex'),
+          ariaMultiline: d.getAttribute('aria-multiline'),
+          ariaLabel: d.getAttribute('aria-label'),
+        }
+      }
+
+      // Editor #2: sem CSS injetado, com attributes próprios e sem foco automático.
+      window.__PROBE__.noCss = () => {
+        const el = document.createElement('div')
+        document.body.appendChild(el)
+        const before = document.head.querySelectorAll('style[data-tiptap-style]').length
+        const e2 = new Editor({
+          element: el,
+          extensions: [StarterKit],
+          content: '<p>x</p>',
+          injectCSS: false,
+          editorProps: { attributes: { 'aria-label': 'Editor sem CSS', role: 'textbox' } },
+        })
+        const after = document.head.querySelectorAll('style[data-tiptap-style]').length
+        const info = {
+          styleTagsBefore: before,
+          styleTagsAfter: after,
+          className: e2.view.dom.className,
+          ariaLabel: e2.view.dom.getAttribute('aria-label'),
+          role: e2.view.dom.getAttribute('role'),
+        }
+        e2.destroy()
+        el.remove()
+        return info
+      }
+
+      // Nó customizado via comando + round-trip HTML/JSON.
+      window.__PROBE__.callout = () => {
+        window.editor.commands.insertContentAt(1, { type: 'callout', attrs: { tone: 'warn' }, content: [{ type: 'text', text: 'cuidado' }] })
+        return { html: window.editor.getHTML(), json: JSON.stringify(window.editor.getJSON()) }
+      }
+
+      // Editable + tabindex, unmount/remount, conteúdo preservado.
+      window.__PROBE__.lifecycle = async () => {
+        const e = window.editor
+        e.setEditable(false)
+        const notEditable = {
+          isEditable: e.isEditable,
+          tabindex: e.view.dom.getAttribute('tabindex'),
+          contenteditable: e.view.dom.getAttribute('contenteditable'),
+        }
+        e.setEditable(true)
+        const htmlBefore = e.getHTML()
+        e.unmount()
+        const afterUnmount = { isMounted: e.isMounted, isDestroyed: e.isDestroyed }
+        const el = document.createElement('div')
+        document.getElementById('ed').appendChild(el)
+        e.mount(el)
+        return {
+          notEditable,
+          afterUnmount,
+          remounted: e.isMounted,
+          contentPreserved: e.getHTML() === htmlBefore,
+          html: e.getHTML(),
+        }
+      }
+    </script>
+  </body>
+</html>

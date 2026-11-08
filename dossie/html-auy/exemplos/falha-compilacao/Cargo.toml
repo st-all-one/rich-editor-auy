@@ -1,0 +1,11 @@
+# Este pacote NÃO COMPILA de propósito: cada bloco viola um contrato do vocabulário.
+[package]
+name = "falha-compilacao"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+html-auy = { path = "../../../../ref/html-auy/crates/html-auy" }
+
+[workspace]
