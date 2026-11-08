@@ -38,6 +38,8 @@ e o projeto usa Versionamento Semântico.
 - Parser reutiliza uma pilha de paths e escaneia strings sem escape por slice; `from_json` S2 caiu de ~34,8 ms para ~21,2 ms e `check_json` para ~8,9 ms.
 - Writer pré-calcula capacidade e copia trechos sem escape de uma vez; `to_json_string` S2 caiu de ~2,97 ms para ~1,12 ms.
 - A11y move o `DocPath` para o nó em vez de clonar; `validate_a11y` caiu de ~11,34 ms para ~11,04 ms.
+- Decoder aceita attrs de marca no objeto canônico `attrs` (round-trip do writer) e mantém campos planos por compatibilidade.
+- Benchmarks `bench/examples/all_types.rs` e `bench/reference/` comparam AUY com ProseMirror e Lexical; relatório em `bench/COMPLEX-COMPARISON.md`.
 
 ### Corrigido
 

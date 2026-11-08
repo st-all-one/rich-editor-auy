@@ -18,7 +18,7 @@
 
 ## Artefato WASM
 
-`scripts/build_wasm.sh` gerou `rich_editor_auy_wasm_bg.wasm` com 335,4 KB no pacote JSR. `wasm-opt`
+`scripts/build_wasm.sh` gerou `rich_editor_auy_wasm_bg.wasm` com 335,6 KB no pacote JSR. `wasm-opt`
 não estava instalado; o valor é o artefato sem otimização adicional. O checksum BLAKE3 não foi
 gerado porque `b3sum` também não está instalado.
 

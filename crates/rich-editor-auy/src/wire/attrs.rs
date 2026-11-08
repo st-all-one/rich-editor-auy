@@ -208,9 +208,13 @@ pub(crate) fn decode_marks(
             .mark_id(name)
             .ok_or_else(|| ParseError::new("unknown_mark", value.start()))?;
         let specs = schema.mark(id).map_or(&[][..], |spec| &spec.attrs);
+        let nested = value.get("attrs");
         let mut decoded = Vec::new();
         for spec in specs {
-            if let Some(raw) = value.get(&spec.name) {
+            let raw = nested
+                .and_then(|attrs| attrs.get(&spec.name))
+                .or_else(|| value.get(&spec.name));
+            if let Some(raw) = raw {
                 let target = decode_value(raw, &spec.kind).map_err(|error| ParseError {
                     offset: raw.start(),
                     ..error

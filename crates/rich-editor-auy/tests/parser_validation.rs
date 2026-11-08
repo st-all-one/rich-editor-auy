@@ -34,3 +34,26 @@ fn rejects_text_inside_a_block_container() {
     )
     .is_err());
 }
+
+#[test]
+fn accepts_canonical_nested_mark_attrs_and_round_trips() {
+    let input = r#"{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"site","marks":[{"type":"link","attrs":{"href":"https://example.test"}}]}]}]}"#;
+    let doc = parse(input);
+    assert!(doc.is_ok(), "nested mark attrs must parse");
+    let Ok(doc) = doc else {
+        return;
+    };
+    let Ok(schema) = Schema::basic() else {
+        return;
+    };
+    let json = doc.to_json_string(&schema);
+    let reparsed = parse(&json);
+    assert!(reparsed.is_ok(), "canonical round trip must parse");
+    let Ok(reparsed) = reparsed else {
+        return;
+    };
+    assert_eq!(
+        doc.to_json_string(&schema),
+        reparsed.to_json_string(&schema)
+    );
+}

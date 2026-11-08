@@ -1,0 +1,14 @@
+{
+  "name": "rich-editor-auy-reference-bench",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@lexical/headless": "0.53.0",
+    "@lexical/link": "0.53.0",
+    "@lexical/list": "0.53.0",
+    "@lexical/rich-text": "0.53.0",
+    "lexical": "0.53.0",
+    "prosemirror-model": "1.25.4",
+    "prosemirror-state": "1.4.3"
+  }
+}

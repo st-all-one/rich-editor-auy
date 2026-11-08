@@ -40,6 +40,7 @@ recurso.
 | 30 | Parser montava uma `String` de path por nó e crescia `String` byte a byte | Path em pilha (`DecodePath`) materializado só no erro e scanner de strings sem escape por slice | `wire/parser.rs`, `wire/attrs.rs`, `wire/json_parser.rs`; from_json 34,78 → 20,87 ms; `check_json` 20,37 → 8,89 ms |
 | 31 | Writer crescia o `String` final e escrevia run a run | Capacidade pré-calculada e `write_string` copia trechos sem escape de uma vez | `wire/mod.rs`, `wire/writer.rs`; `to_json_string` 2,97 → 1,12 ms |
 | 32 | A11y clonava o `DocPath` ao inserir o nó | `block_nodes` recebe o path por valor e move para o nó; filhos recebem paths novos | `a11y/build.rs`, `a11y/tree.rs`; validate_a11y 11,34 → 11,04 ms |
+| 33 | Writer gravava attrs de marca em `attrs`, mas o decoder só aceitava campos planos | Decoder aceita o objeto `attrs` canônico e mantém compatibilidade com campos planos | `wire/attrs.rs`; teste de round-trip `accepts_canonical_nested_mark_attrs_and_round_trips` |
 
 ## Divergências abertas
 
