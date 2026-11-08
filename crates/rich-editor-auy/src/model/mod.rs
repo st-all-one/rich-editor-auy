@@ -2,6 +2,7 @@
 
 pub mod attrs;
 pub mod block;
+pub(crate) mod chunks;
 pub mod doc;
 pub mod ids;
 mod limits;
@@ -13,6 +14,7 @@ pub mod validate;
 
 pub use attrs::{Attr, AttrValue, Attrs};
 pub use block::{AtomData, Block, BlockContent, BlockIter, InlineIter, InlineView};
+pub use chunks::{BlockSeq, TopBlockIter};
 pub use doc::{Doc, Fragment};
 pub use ids::{AttrId, DocId, GroupId, MarkId, NodeId, NodeKind, RefTarget, VersionTag};
 pub use marks::{Mark, MarkAttr, MarkSet};

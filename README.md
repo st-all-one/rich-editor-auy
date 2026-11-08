@@ -10,7 +10,7 @@ no UI opinions.
 
 </div>
 
-> **Status:** MVP implementation (F0–F3.5 materialized; wire/limits/a11y hardening applied; F4 performance measurement in progress with open items). The Rust core,
+> **Status:** MVP implementation (F0–F3.5 materialized; wire/limits/a11y hardening applied; S2 apply target met with chunked blocks; S1/wire/a11y targets open). The Rust core,
 > WASM artifact, Deno/JSR packages, DOM adapter, Composer package and CLI are present. `make check`
 > is the local gate; measured performance deviations and open design items live in
 > [`DIVERGENCES.md`](DIVERGENCES.md). The planning documents are written in Portuguese; the public

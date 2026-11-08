@@ -100,8 +100,10 @@ fn one_character_insertion_has_a_bounded_allocation_count() {
     reset();
     let applied = state.apply(transaction);
     assert!(applied.is_ok(), "insert must apply");
+    // Chunked storage deliberately trades a few small directory allocations for O(chunk)
+    // copying instead of O(document) copying.
     assert!(
-        allocations() <= 32,
+        allocations() <= 40,
         "hot-path insert allocated {} times",
         allocations()
     );

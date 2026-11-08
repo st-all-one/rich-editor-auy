@@ -167,7 +167,13 @@ pub(super) fn blocks_between(
         position: to.0,
         size: doc.size().0,
     })?;
-    Ok(doc.blocks().get(start..end).unwrap_or_default().to_vec())
+    Ok(doc
+        .blocks()
+        .iter()
+        .skip(start)
+        .take(end.saturating_sub(start))
+        .cloned()
+        .collect())
 }
 
 fn node_attr(doc: &Doc, pos: Pos, attr: AttrId) -> Option<AttrValue> {

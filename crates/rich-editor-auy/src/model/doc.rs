@@ -14,6 +14,7 @@ use crate::pos::{Pos, Range, Size};
 
 use super::attrs::Attrs;
 use super::block::Block;
+use super::chunks::{BlockSeq, Chunks};
 use super::limits::check_attr_limits;
 use super::limits::check_block_limits;
 use super::records::{Anchor, Reference};
@@ -55,9 +56,7 @@ impl Fragment {
 #[derive(Debug)]
 struct DocInner {
     attrs: Attrs,
-    blocks: Box<[Arc<Block>]>,
-    starts: Box<[u32]>,
-    size: Size,
+    chunks: Chunks,
 }
 
 /// An immutable document snapshot.
@@ -67,7 +66,7 @@ pub struct Doc(Arc<DocInner>);
 impl PartialEq for Doc {
     fn eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
-            || (self.0.attrs == other.0.attrs && self.0.blocks == other.0.blocks)
+            || (self.0.attrs == other.0.attrs && self.0.chunks == other.0.chunks)
     }
 }
 
@@ -115,18 +114,9 @@ impl Doc {
                 max: limits.max_nodes,
             });
         }
-        let blocks = blocks.into_boxed_slice();
-        let mut starts = Vec::with_capacity(blocks.len());
-        let mut offset = 0_u32;
-        for block in &blocks {
-            starts.push(offset);
-            offset = offset.saturating_add(block.size().0);
-        }
         Ok(Self(Arc::new(DocInner {
             attrs,
-            blocks,
-            starts: starts.into_boxed_slice(),
-            size: Size(size),
+            chunks: Chunks::new(blocks),
         })))
     }
 
@@ -150,43 +140,10 @@ impl Doc {
         block: Block,
         limits: &crate::Limits,
     ) -> Result<Self, LimitError> {
-        check_block_limits(&block, limits)?;
-        let block = Arc::new(block);
-        let old = self.0.blocks.get(index).ok_or_else(|| LimitError::Nodes {
-            actual: u32::try_from(index).unwrap_or(u32::MAX),
-            max: u32::try_from(self.0.blocks.len()).unwrap_or(u32::MAX),
-        })?;
-        let mut blocks = self.0.blocks.to_vec();
-        let Some(slot) = blocks.get_mut(index) else {
-            return Err(LimitError::Nodes {
-                actual: u32::try_from(index).unwrap_or(u32::MAX),
-                max: u32::try_from(self.0.blocks.len()).unwrap_or(u32::MAX),
-            });
-        };
-        *slot = Arc::clone(&block);
-        let size = self
-            .0
-            .size
-            .0
-            .saturating_sub(old.size().0)
-            .saturating_add(block.size().0);
-        if size > limits.max_doc_bytes {
-            return Err(LimitError::DocBytes {
-                actual: u64::from(size),
-                max: limits.max_doc_bytes,
-            });
-        }
-        let mut starts = self.0.starts.to_vec();
-        for start in starts.iter_mut().skip(index.saturating_add(1)) {
-            *start = start
-                .saturating_add(block.size().0)
-                .saturating_sub(old.size().0);
-        }
+        let chunks = self.0.chunks.replacing(index, block, limits)?;
         Ok(Self(Arc::new(DocInner {
             attrs: self.0.attrs.clone(),
-            blocks: blocks.into_boxed_slice(),
-            starts: starts.into_boxed_slice(),
-            size: Size(size),
+            chunks,
         })))
     }
 
@@ -198,45 +155,32 @@ impl Doc {
 
     /// Returns top-level blocks.
     #[must_use]
-    pub fn blocks(&self) -> &[Arc<Block>] {
-        &self.0.blocks
+    pub fn blocks(&self) -> BlockSeq<'_> {
+        self.0.chunks.view()
     }
 
     /// Returns a block by index.
     #[must_use]
     pub fn block(&self, index: u32) -> Option<&Arc<Block>> {
-        self.0.blocks.get(usize::try_from(index).ok()?)
+        self.0.chunks.get(usize::try_from(index).ok()?)
     }
 
     /// Returns the absolute range of a top-level block.
     #[must_use]
     pub fn block_range(&self, index: u32) -> Option<Range> {
-        let target = usize::try_from(index).ok()?;
-        let block = self.0.blocks.get(target)?;
-        let start = *self.0.starts.get(target)?;
-        let end = start.checked_add(block.size().0)?;
-        Some(Range::new(Pos(start), Pos(end)))
+        self.0.chunks.range(usize::try_from(index).ok()?)
     }
 
     /// Returns the block containing a position using the ordered start index.
     #[must_use]
     pub fn block_at(&self, pos: Pos) -> Option<(usize, &Arc<Block>)> {
-        if pos > self.size().as_pos() || self.0.blocks.is_empty() {
-            return None;
-        }
-        let index = self
-            .0
-            .starts
-            .partition_point(|start| *start <= pos.0)
-            .saturating_sub(1);
-        let block = self.0.blocks.get(index)?;
-        Some((index, block))
+        self.0.chunks.at(pos)
     }
 
     /// Returns the document size.
     #[must_use]
     pub fn size(&self) -> Size {
-        self.0.size
+        self.0.chunks.size()
     }
 
     /// Returns whether two handles point at the same snapshot.
@@ -247,7 +191,7 @@ impl Doc {
 
     /// Appends all text to `out` in reading order.
     pub fn text_into(&self, out: &mut String) {
-        for block in &self.0.blocks {
+        for block in self.0.chunks.iter() {
             super::measure::text_of_block(block, out);
         }
     }
@@ -265,7 +209,7 @@ impl Doc {
     pub fn anchors(&self) -> Vec<Anchor> {
         let mut anchors = Vec::new();
         let mut offset = 0_u32;
-        for block in &self.0.blocks {
+        for block in self.0.chunks.iter() {
             super::measure::collect_anchors(block, offset, &mut anchors);
             offset = offset.saturating_add(block.size().0);
         }
@@ -277,7 +221,7 @@ impl Doc {
     pub fn references(&self) -> Vec<Reference> {
         let mut references = Vec::new();
         let mut offset = 0_u32;
-        for block in &self.0.blocks {
+        for block in self.0.chunks.iter() {
             super::measure::collect_references(block, offset, &mut references);
             offset = offset.saturating_add(block.size().0);
         }

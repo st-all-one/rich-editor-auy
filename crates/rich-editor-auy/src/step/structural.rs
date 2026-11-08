@@ -33,9 +33,9 @@ pub(super) fn replace_blocks(
         });
     }
     let mut blocks = Vec::new();
-    blocks.extend_from_slice(doc.blocks().get(..start).unwrap_or_default());
+    blocks.extend(doc.blocks().iter().take(start).cloned());
     blocks.extend_from_slice(replacement);
-    blocks.extend_from_slice(doc.blocks().get(end..).unwrap_or_default());
+    blocks.extend(doc.blocks().iter().skip(end).cloned());
     Doc::new(doc.attrs().clone(), blocks, &crate::Limits::default()).map_err(StepError::Limit)
 }
 
