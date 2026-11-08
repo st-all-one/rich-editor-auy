@@ -2,151 +2,166 @@
 
 ## 1. Escopo e método
 
-Este é um comparativo **headless de engine**, não de DOM, IME, paint ou leitor de tela. O corpus é
-gerado por `bench/examples/all_types.rs` e contém, em 500 repetições, 4.000 blocos de topo e 82.000
-bytes de texto (817.979 bytes de JSON canônico):
+Comparativo **headless de engine**, não de browser completo (DOM, IME, paint, leitor de tela).
+Cada ferramenta foi levada ao limite do que seu modelo representa sem plugins/custom nodes, no
+mesmo host.
+
+Ambiente: Linux x86_64, Rust 1.99 `--release`, Node 22.23, ProseMirror 1.25.13, Lexical 0.53.0,
+Quill 2.0.3, Tiptap 3.33.0. Foram feitas 2–5 execuções de aquecimento e 10–100 medições por
+operação. Números de uma execução; não são gate de CI.
+
+### Corpus
+
+`bench/examples/all_types.rs` gera 500 repetições de um template com 4.000 blocos e 817.979 bytes
+de JSON:
 
 - documento com `lang`, `dir` e `title`;
-- IDs de nó (`id`) em títulos e parágrafos;
-- títulos e parágrafos com runs e marcas `strong`, `em`, `code`, `link` e `ref`;
-- referência entre publicações (`doc`, `node`, `version`);
+- IDs de nó, títulos e parágrafos;
+- runs com `strong`, `em`, `code`, `link` e `ref` entre publicações;
 - átomo inline `image` com `alt` e `src`;
-- listas com `list_item`;
-- citação (`blockquote`);
-- bloco de código (`code_block`);
-- tabela com `table`, `table_row`, `table_header` e `table_cell`;
-- separador atômico;
-- árvore a11y/roles derivada do schema.
+- listas, `blockquote`, `code_block`, tabela (`table`/`row`/`header`/`cell`) e separador;
+- roles e validação a11y.
 
-O ProseMirror foi executado com um schema equivalente, incluindo tabela, imagem, separador e as
-marcas. O Lexical foi executado no subconjunto que ele representa sem nós customizados: títulos,
-parágrafos, listas, link e marcas. Quill Delta e Tiptap não entram na tabela numérica: o primeiro é
-uma sequência de ops sem árvore semântica; o segundo compartilha o núcleo do ProseMirror e adiciona
-camada de extensões/DOM.
+O corpus **comum sem refs** (`/tmp/complex-taino.json`) tem 3.000 blocos e 738.570 bytes e serve
+para comparar AUY, ProseMirror e taino no mesmo JSON. Quill, Tiptap e Lexical usam subconjuntos
+próprios, indicados na tabela.
 
-Ambiente: Linux x86_64, Rust 1.99 em `--release`, Node 22.23, ProseMirror 1.25.4, Lexical 0.53.0.
-Foram feitas 5 execuções de aquecimento e 50–100 medições por operação. Os números são de uma
-execução; não são um gate de CI.
+## 2. Resultado por ferramenta
 
-Reprodução:
+### 2.1 AUY — todos os tipos, 4.000 blocos, 818 KB
+
+| Operação | Tempo |
+|---|---:|
+| `check_json` (parse bruto) | 11,30 ms |
+| `from_json` (parse + decode + validação) | 26,98 ms |
+| `to_json_string` | **0,65 ms** |
+| `validate` (estrutura) | 4,44 ms |
+| `a11y_tree` | 10,10 ms |
+| `validate_a11y` | 10,92 ms |
+| `apply` + 1 char | **0,003 ms** |
+
+A AUY é a única da tabela que representa todos os tipos no mesmo schema e faz validação
+estrutural + a11y no core. `apply` inclui `ChangeSet` e histórico.
+
+### 2.2 ProseMirror — todos os tipos, 4.000 blocos, 885 KB
+
+| Operação | Tempo |
+|---|---:|
+| `Node.fromJSON` | **4,43 ms** |
+| `toJSON` + `JSON.stringify` | 8,85 ms |
+| `state.apply(insertText)` | 0,044 ms |
+
+PM não tem a11y, IDs únicos, refs entre documentos ou validação semântica equivalente no core.
+O parse é ~6× mais rápido que o `from_json` da AUY e o `apply` ~15× mais lento.
+
+### 2.3 Corpus comum sem refs — 3.000 blocos, 739 KB
+
+| Ferramenta | Parse / setContent | Serialize / get | Aplicar 1 char |
+|---|---:|---:|---:|
+| AUY | 20,39 ms | **0,759 ms** | **0,003 ms** |
+| ProseMirror | **3,15 ms** | 5,16 ms | 0,038 ms |
+| taino-edit | 9,51 ms | 18,22 ms | 0,038 ms |
+| Lexical* | 54,43 ms | 15,10 ms | — |
+| Quill* | 1.747,5 ms (setContents/DOM) | 2,75 ms (getContents) | 283,4 ms (updateContents/DOM) |
+| Tiptap* | 12,67 ms (setContent/DOM) | 3,10 ms (getJSON, objeto) | 15,80 ms (insertContentAt/DOM) |
+
+\* Corpus/subconjunto diferente: Lexical 2.500 nós/1,30 MB sem refs/tabela/imagem; Quill Delta
+plano com 12.000 ops/77,5 KB sem tabela/refs/alt; Tiptap 3.000 blocos/646 KB sem refs/tabela/imagem.
+Quill/Tiptap incluem construção de DOM; AUY/PM/taino/Lexical são headless. `getJSON` do Tiptap devolve
+objeto, não string.
+
+## 3. Limites de cada ferramenta
+
+| Ferramenta | O que suporta no teste | Onde o modelo quebra |
+|---|---|---|
+| **AUY** | doc attrs, IDs, refs, tabela, imagem, separador, a11y | parse/validação caros; a11y custa ~11 ms |
+| **ProseMirror** | árvore + marks + tabela/imagem via schema | a11y/IDs/refs/validação semântica exigem schema/plugins; parse mais rápido por validar menos |
+| **taino-edit** | tabela, imagem, blockquote, listas, code, marks | sem ref mark no conjunto de extensões; sem a11y de core; JSON via `serde_json` é lento |
+| **Lexical** | heading/parágrafo/lista/link/marks | refs, tabela e imagem exigem nós customizados; formato maior; sem a11y de core |
+| **Quill** | texto rico plano, listas por atributo, link, image embed | Delta não expressa árvore aninhada/refs/IDs; image embed não carrega `alt`; sem schema/a11y; DOM obrigatório |
+| **Tiptap** | PM + StarterKit (heading, listas, code, blockquote, link) | tabela/imagem/refs/a11y exigem extensões; DOM obrigatório; parse/set inclui render |
+
+## 4. Leitura dos números
+
+### Parse
+
+O ProseMirror ganha no corpus completo (4,43 ms contra 26,98 ms da AUY). Parte da diferença é
+arquitetural — `Node.fromJSON` constrói a árvore diretamente, enquanto a AUY materializa
+`JsonValue`, decodifica, cria `Doc` e valida. Parte é escopo: PM não valida a11y, IDs únicos,
+refs entre documentos e os mesmos invariantes. O parse bruto da AUY (11,30 ms) ainda é 2,5× o PM;
+o próximo ganho grande é decode incremental sem árvore JSON intermediária.
+
+O taino parseia o corpus sem refs em 9,51 ms, ~2,1× mais rápido que a AUY no mesmo JSON. Ele usa
+uma árvore/`serde_json` própria e não faz a validação a11y da AUY.
+
+### Serialização
+
+A AUY ganha com folga: writer streaming, capacidade pré-calculada e cópia de trechos sem escape.
+Ela escreve 0,65 ms no corpus completo, contra 8,85 ms do PM e 18,22 ms do taino. O Delta do Quill
+serializa em 2,75 ms, mas é uma representação plana e perde estrutura; o `getJSON` do Tiptap em
+3,10 ms devolve objeto, não bytes canônicos.
+
+### Edição
+
+A AUY aplica 1 char em ~3 µs no corpus misto; PM ~38–44 µs, taino ~38 µs. O PM e o taino constroem
+novos nós/objetos; a AUY copia o chunk de 128 blocos e o diretório, mantendo o custo independente
+do tamanho total do documento. Quill (283 ms) e Tiptap (15,8 ms) pagam o DOM e a reconciliação da
+view; esses números não são comparáveis a um core headless.
+
+### A11y
+
+A AUY é a única com árvore e validação a11y no core: ~10,1 ms e ~10,9 ms no corpus completo. PM,
+Lexical, Quill e Tiptap delegam acessibilidade ao app/DOM, com cobertura e custo dependentes do
+host. Isso é vantagem funcional e custo explícito; deve ser lazy/opt-in no adaptador.
+
+### Lexical
+
+Lexical foi o mais lento no parse do subconjunto: 54,4 ms para 2.500 nós/1,30 MB, contra 46,6 ms
+na rodada anterior e 33 µs/KB da AUY no corpus completo. O formato carrega muitos metadados por nó
+(`detail`, `format`, `mode`, `style`, `version`, `direction`, `indent`) e `parseEditorState`
+reconcilia estado de editor, não apenas uma árvore. A vantagem é o modelo de nós/extensões e a
+integração React, não throughput de wire.
+
+### Quill e Tiptap
+
+Quill é o caso extremo do modelo Delta: `setContents` de 3.000 blocos levou 1,75 s no happy-dom e
+`updateContents` 283 ms. O `getContents` é rápido (2,75 ms), mas a representação não tem árvore
+semântica, refs, tabela ou `alt`. Tiptap ficou em 12,7 ms de `setContent`, 3,1 ms de `getJSON` e
+15,8 ms de inserção com DOM. Ele é PM + extensões + view; os números sem DOM do PM são o piso, não
+o Tiptap completo.
+
+## 5. Veredito frente à AUY
+
+| Dimensão | Vencedor | Comentário |
+|---|---|---|
+| Parse canônico | ProseMirror | ~6× mais rápido no corpus completo, mas valida menos |
+| Parse com validação completa | AUY | único com a11y/IDs/refs no core |
+| Serialização | **AUY** | ~13,6× mais rápida que PM no corpus completo |
+| Edição | **AUY** | ~3 µs vs 38–44 µs; chunks valem |
+| Modelo completo | **AUY** | refs + tabela + imagem + a11y no mesmo schema |
+| A11y | **AUY** | PM/Lexical/Quill/Tiptap delegam |
+| Extensibilidade/React | Lexical/Tiptap | ecossistema JS maduro |
+| DOM/browser | Quill/Tiptap | medidos com happy-dom, não browser real |
+
+A AUY ganha em **serialização, edição e completude semântica**. Perde em **parse** para PM e
+taino, e paga **a11y** no core. O próximo experimento correto é decode incremental + benchmark de
+browser/IME separado; estes números não medem paint, teclado ou leitor de tela.
+
+## 6. Reprodução
 
 ```sh
 cargo run --release --manifest-path bench/Cargo.toml --example all_types
+cargo run --release --manifest-path bench/Cargo.toml --example complex -- /tmp/complex-taino.json
+
+cd bench/reference
+npm install
+node make_basic.mjs
+node pm-basic.mjs /tmp/complex.json
+node pm-all.mjs
+node lexical.mjs
+N=500 node quill.mjs
+N=500 node tiptap.mjs
+(cd taino && cargo run --release)
 ```
 
-Os scripts de referência estão em [`reference/`](./reference/) e usam `prosemirror-model`, `prosemirror-state`, `lexical`,
-`@lexical/headless`, `@lexical/rich-text`, `@lexical/list` e `@lexical/link`.
-
-## 2. Resultado principal
-
-Documento de todos os tipos, 4.000 blocos, ~818 KB de JSON:
-
-| Operação | rich-editor-auy | ProseMirror | Leitura |
-|---|---:|---:|---|
-| Parse canônico (`from_json` / `Node.fromJSON`) | **26,98 ms** | **6,25 ms** | PM ~4,3× mais rápido |
-| Parse bruto (`check_json`, sem decodificar Doc) | 11,30 ms | — | AUY gasta ~15,7 ms em decode+validação |
-| Serialização canônica | **0,65 ms** | **9,04 ms** | AUY ~13,9× mais rápido |
-| Aplicar 1 caractere | **0,003 ms** | **0,038 ms** | AUY ~12,7× mais rápido |
-| Validar invariantes | 4,44 ms | sem equivalente no core | — |
-| Árvore a11y | 10,10 ms | sem equivalente no core | — |
-| Validar a11y | 10,92 ms | sem equivalente no core | — |
-| JSON canônico | 817.979 B | 884.979 B | AUY ~8% menor |
-
-O `apply` da AUY inclui `ChangeSet` e gravação de histórico; o `state.apply` do PM não inclui um
-plugin de histórico. Mesmo assim a AUY ficou uma ordem de grandeza abaixo.
-
-## 3. Documento comum (subset)
-
-Para separar o efeito de tabela/imagem/refs, o corpus comum tem 3.000 blocos, 784 KB, com títulos,
-parágrafos, listas, marcas `strong`/`em`/`code`/`link`/`ref`:
-
-| Operação | AUY | ProseMirror | Lexical* |
-|---|---:|---:|---:|
-| Parse | 19,36 ms | 3,57 ms | 46,64 ms |
-| Parse bruto | 9,17 ms | — | — |
-| Serialização | 0,58 ms | 4,90 ms | 12,07 ms |
-| Aplicar 1 char | 0,003 ms | 0,022 ms | — |
-
-\* Lexical usou 2.500 nós e 1,3 MB de JSON, porque o formato serializado do Lexical é maior e o
-subconjunto não tem refs, tabela ou imagem. Normalizando pelo JSON, o parse Lexical ficou em
-~35,9 µs/KB contra ~33,0 µs/KB da AUY; a serialização ficou em ~9,3 µs/KB contra ~0,8 µs/KB. A
-comparação por byte é indicativa, não equivalência de modelo.
-
-## 4. O que os números explicam
-
-### Parse: AUY perde para PM, mas entrega validação que o PM deixa para fora
-
-O caminho AUY é: parser JSON estrito → `decode_block` → `Doc::new` → `Doc::validate`. O parser bruto
-já custa 11,3 ms; decode e validação somam ~15,7 ms. O ProseMirror faz `Node.fromJSON` em 6,25 ms,
-mas não valida a11y, IDs únicos, refs entre documentos ou os mesmos invariantes estruturais. A
-comparação honesta é **parse com validação AUY** contra **parse PM + validação externa**, que ainda
-não existe pronta no schema PM.
-
-Ainda assim, o parser AUY é o gargalo arquitetural: ele materializa uma árvore `JsonValue` antes de
-decodificar o documento. O próximo ganho grande é decodificar incrementalmente do parser para
-`Block`/`Doc`, ou reutilizar buffers de parse.
-
-### Serialização: streaming ganha da árvore intermediária
-
-O writer AUY percorre `Doc` e escreve direto no `String`, com capacidade pré-calculada e cópia de
-trechos sem escape. O PM precisa construir o objeto `toJSON()` inteiro e depois `JSON.stringify`.
-Isso aparece como 0,65 ms contra 9,04 ms — e o JSON AUY ainda é 8% menor.
-
-### Edição: chunks e passo invertível barato
-
-O `apply` AUY em um documento de 4.000 blocos ficou em ~3 µs, contra ~38 µs do PM. O AUY copia
-apenas o chunk de 128 blocos e o diretório; o PM paga a construção de novos nós/objetos JS e o custo
-do JIT. O número é coerente com o orçamento de 100–200 ns por tecla do plano? Não: o orçamento
-S1/S2 mede documentos sintéticos simples; neste corpus misto o custo sobe para a ordem de
-microssegundos, mas continua muito abaixo de um frame.
-
-### A11y: custo exclusivo do core AUY
-
-A árvore a11y (10,1 ms) e sua validação (10,9 ms) não têm equivalente direto em PM/Lexical: os dois
-delegam acessibilidade ao app/DOM. O custo é relevante — ~40% do parse — e deve ser opcional/ lazy
-no adaptador, não gratuito em toda edição. Em compensação, o core entrega roles, nomes, `alt`,
-`lang`/`dir`, ordem e diagnósticos determinísticos.
-
-### Lexical: modelo mais pesado e formato maior
-
-No subset, Lexical levou 46,6 ms para parsear 1,3 MB e 12,1 ms para serializar. O formato contém
-mais metadados por nó (`detail`, `format`, `mode`, `style`, `version`, `direction`, `indent`) e o
-`parseEditorState` reconcilia estado de editor, não apenas uma árvore. Ele ganha em modelo de
-nós/extensões e integração React; perde em custo de representação e em completude semântica
-(refs/tabela/imagem exigem nós customizados).
-
-### Quill, Tiptap e taino
-
-- **Quill**: Delta é uma sequência linear de `retain`/`insert`/`delete`. É excelente para mudanças
-  planas; não representa tabela aninhada, refs entre documentos ou identidade de nó sem extensões.
-  Comparar parse de Delta com parse de árvore seria comparar modelos diferentes.
-- **Tiptap**: o custo de parse/serialize é o do ProseMirror + extensões + camada de comandos. Não há
-  um core headless independente para medir; os números do PM são o piso, não o Tiptap completo.
-- **taino-edit**: é o porte Rust mais próximo, mas não publica benchmark reproduzível nem orçamento
-  de alocação; a comparação fica arquitetural (steps/schema), não numérica.
-
-## 5. Leitura arquitetural
-
-| Dimensão | rich-editor-auy | ProseMirror | Lexical |
-|---|---|---|---|
-| Modelo | árvore de blocos + inline plano | árvore + inline plano | árvore de nós tipados |
-| Serialização | canônica, streaming, bytes estáveis | `toJSON` + JSON.stringify | objeto de estado + JSON |
-| Parse | estrito + decodifica + valida invariantes | `Node.fromJSON` + schema | `parseEditorState` + registry |
-| Edição | steps + mapping + chunks | steps + transform | update/double buffer |
-| A11y | core (árvore + validação) | delegada | parcial/delegada |
-| Refs entre docs | `RefTarget` no core | atributo de schema/app | atributo/custom node |
-| Runtime | Rust, `no_std`, WASM | JS | JS |
-| Risco principal | parse/validação caros | validação/a11y fora do core | formato e modelo mais pesados |
-
-## 6. Conclusões
-
-1. **A AUY ganha claramente em serialização e edição** neste corpus: writer streaming e chunks
-   valem mais que a árvore JS.
-2. **A AUY perde no parse** para o PM por ~4,3×; parte é validação adicional, parte é a árvore
-   `JsonValue` intermediária. O parse bruto de 11,3 ms mostra que o decode é o alvo seguinte.
-3. **A11y é o diferencial e o custo**: 10–11 ms para 4.000 blocos; deve ser lazy/opt-in no host.
-4. **Lexical não é mais rápido** no subset medido; seu formato maior e o parse de estado cobram
-   caro. A vantagem dele é modelo de extensão/React, não throughput de wire.
-5. **Quill/Tiptap não são comparações de mesmo modelo**: Delta é plano; Tiptap é PM + camada.
-6. O próximo experimento correto é **parse incremental** (parser → decode sem `JsonValue`) e um
-   **benchmark de browser/IME** separado; os números acima não medem DOM, paint ou teclado.
+Arquivos: `bench/examples/all_types.rs`, `bench/examples/complex.rs`, `bench/reference/`.

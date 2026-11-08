@@ -7,8 +7,12 @@
     "@lexical/link": "0.53.0",
     "@lexical/list": "0.53.0",
     "@lexical/rich-text": "0.53.0",
+    "@tiptap/core": "3.33.0",
+    "@tiptap/starter-kit": "3.33.0",
+    "happy-dom": "21.0.4",
     "lexical": "0.53.0",
-    "prosemirror-model": "1.25.4",
-    "prosemirror-state": "1.4.3"
+    "prosemirror-model": "1.25.13",
+    "prosemirror-state": "1.4.4",
+    "quill": "2.0.3"
   }
 }

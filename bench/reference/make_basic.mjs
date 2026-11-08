@@ -12,4 +12,9 @@ const blocks=[
  {type:'paragraph',content:[text('Parágrafo longo para medir texto e marcas. '),text('negrito',[{type:'strong'}]),text(' normal '),text('itálico',[{type:'em'}])]},
 ];
 const doc={type:'doc',attrs:{lang:'pt-BR',dir:'ltr'},content:blocks};
-writeFileSync('/tmp/complex.json',JSON.stringify({...doc,content:blocks.flatMap((block)=>Array.from({length:500},()=>block))}));
+const big={...doc,content:blocks.flatMap((block)=>Array.from({length:500},()=>block))};
+writeFileSync('/tmp/complex.json',JSON.stringify(big));
+const noRef=JSON.parse(JSON.stringify(big));
+const strip=(node)=>{if(Array.isArray(node)){node.forEach(strip);}else if(node&&typeof node==='object'){if(node.marks)node.marks=node.marks.filter((mark)=>mark.type!=='ref');if(node.marks&&node.marks.length===0)delete node.marks;Object.values(node).forEach(strip);}};
+strip(noRef);
+writeFileSync('/tmp/complex-taino.json',JSON.stringify(noRef));
