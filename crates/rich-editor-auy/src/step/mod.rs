@@ -8,6 +8,7 @@ mod text_edit;
 mod text_splice;
 
 pub use apply::apply_step;
+pub(crate) use apply::apply_step_owned;
 #[cfg(feature = "visits")]
 pub use apply::take_locate_visits;
 pub use invert::invert_step;

@@ -57,7 +57,7 @@ pub fn insert_text(input: &str, position: u32, text: &str) -> Result<String, JsV
     transaction
         .insert_text(Pos(position), text)
         .map_err(error)?;
-    let applied = state.apply(transaction).map_err(error)?;
+    let applied = state.apply_owned(transaction).map_err(error)?;
     Ok(applied.state.doc().to_json_string(&schema))
 }
 
@@ -113,7 +113,7 @@ pub fn toggle_mark(input: &str, from: u32, to: u32, mark: &str) -> Result<String
     transaction
         .add_mark(Range::new(Pos(from), Pos(to)), Mark::new(id))
         .map_err(error)?;
-    let applied = state.apply(transaction).map_err(error)?;
+    let applied = state.apply_owned(transaction).map_err(error)?;
     Ok(applied.state.doc().to_json_string(&schema))
 }
 
@@ -135,7 +135,7 @@ fn edit(
     let state = EditorState::from_doc(Arc::clone(&schema), doc);
     let mut transaction = state.transaction();
     operation(&mut transaction).map_err(error)?;
-    let applied = state.apply(transaction).map_err(error)?;
+    let applied = state.apply_owned(transaction).map_err(error)?;
     Ok(applied.state.doc().to_json_string(&schema))
 }
 

@@ -4,6 +4,7 @@
     reason = "explicit edit algebra and mapping branches"
 )]
 
+mod apply_owned;
 mod change;
 mod composition;
 mod history;
@@ -180,15 +181,6 @@ impl EditorState {
         let changes =
             ChangeSet::from_steps(&state.doc, transaction.steps(), selection != self.selection);
         Ok(Applied { state, changes })
-    }
-
-    /// Applies a transaction by value.
-    ///
-    /// # Errors
-    ///
-    /// Returns a typed error. The MVP implementation uses the immutable path.
-    pub fn apply_owned(self, transaction: Transaction) -> Result<Applied, ApplyError> {
-        self.apply(transaction)
     }
 
     /// Returns whether undo is available.

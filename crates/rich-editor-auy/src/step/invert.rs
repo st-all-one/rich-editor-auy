@@ -143,9 +143,7 @@ fn text_between_block(doc: &Doc, from: Pos, to: Pos) -> Result<crate::model::Tex
         usize::try_from(from.0.saturating_sub(start.saturating_add(1))).unwrap_or(usize::MAX);
     let local_end =
         usize::try_from(to.0.saturating_sub(start.saturating_add(1))).unwrap_or(usize::MAX);
-    let (_, rest) = text_edit::split_text(text, local_start)?;
-    let (middle, _) = text_edit::split_text(&rest, local_end.saturating_sub(local_start))?;
-    Ok(middle)
+    text_edit::slice_text(text, local_start, local_end)
 }
 
 pub(super) fn blocks_between(

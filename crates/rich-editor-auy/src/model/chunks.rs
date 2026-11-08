@@ -22,6 +22,8 @@ use super::block_seq::{BlockSeq, TopBlockIter};
 use super::chunk::Chunk;
 use super::limits::check_block_limits;
 
+mod in_place;
+
 /// Number of top-level blocks in one chunk.
 pub(crate) const CHUNK_BLOCKS: usize = 128;
 

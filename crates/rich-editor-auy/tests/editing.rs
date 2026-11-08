@@ -248,3 +248,52 @@ fn fresh_editor_state_accepts_the_first_insertion() {
     };
     assert_eq!(applied.state.doc().plain_text(), "Olá");
 }
+
+#[test]
+fn owned_apply_matches_immutable_apply_and_keeps_history() {
+    let schema = Schema::basic();
+    assert!(schema.is_ok(), "basic schema must compile");
+    let Ok(schema) = schema else {
+        return;
+    };
+    let schema = Arc::new(schema);
+    let paragraph = schema.node_kind("paragraph");
+    let mark = schema.mark_id("strong");
+    assert!(
+        paragraph.is_some() && mark.is_some(),
+        "schema nodes must exist"
+    );
+    let (Some(paragraph), Some(mark)) = (paragraph, mark) else {
+        return;
+    };
+    let block = Block::text(paragraph, Attrs::empty(), TextBlock::empty());
+    let Ok(doc) = Doc::from_blocks(Attrs::empty(), vec![Arc::new(block)]) else {
+        return;
+    };
+    let initial = EditorState::from_doc(Arc::clone(&schema), doc);
+    let mut transaction = initial.transaction();
+    assert!(transaction.insert_text(Pos(1), "abc").is_ok());
+    assert!(
+        transaction
+            .add_mark(Range::new(Pos(1), Pos(4)), Mark::new(mark))
+            .is_ok()
+    );
+    transaction.set_selection(Selection::caret(Pos(4)));
+    let immutable = initial.apply(transaction.clone());
+    let owned = initial.apply_owned(transaction);
+    assert!(immutable.is_ok() && owned.is_ok());
+    let (Ok(immutable), Ok(owned)) = (immutable, owned) else {
+        return;
+    };
+    assert_eq!(
+        immutable.state.doc().to_json_string(&schema),
+        owned.state.doc().to_json_string(&schema)
+    );
+    assert_eq!(immutable.state.selection(), owned.state.selection());
+    let undone = owned.state.undo();
+    assert!(undone.is_ok(), "owned history must undo");
+    let Ok(Some(undone)) = undone else {
+        return;
+    };
+    assert_eq!(undone.state.doc().plain_text(), "");
+}

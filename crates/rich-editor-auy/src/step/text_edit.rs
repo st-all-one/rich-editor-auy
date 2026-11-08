@@ -14,6 +14,9 @@ use alloc::vec::Vec;
 use crate::error::StepError;
 use crate::model::{InlineItem, Mark, MarkSet, Run, TextBlock};
 
+mod slice;
+pub(crate) use slice::slice_text;
+
 /// Replaces a byte range in a text block and inserts text at the start.
 ///
 /// # Errors

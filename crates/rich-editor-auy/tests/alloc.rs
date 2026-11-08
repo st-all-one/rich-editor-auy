@@ -7,6 +7,7 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, PoisonError};
 
 use rich_editor_auy::model::{Attrs, Block, Doc, InlineItem, MarkSet, Run, TextBlock};
 use rich_editor_auy::pos::Pos;
@@ -16,6 +17,7 @@ use rich_editor_auy::state::EditorState;
 struct Counting;
 
 static ALLOCATIONS: AtomicUsize = AtomicUsize::new(0);
+static ALLOC_LOCK: Mutex<()> = Mutex::new(());
 static LIVE_BYTES: AtomicUsize = AtomicUsize::new(0);
 
 // SAFETY: every method forwards to the system allocator with the same pointer and layout
@@ -97,6 +99,7 @@ fn one_character_insertion_has_a_bounded_allocation_count() {
     let state = EditorState::from_doc(Arc::clone(&schema), doc);
     let mut transaction = state.transaction();
     assert!(transaction.insert_text(Pos(1), "x").is_ok());
+    let _guard = ALLOC_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
     reset();
     let applied = state.apply(transaction);
     assert!(applied.is_ok(), "insert must apply");
@@ -105,6 +108,42 @@ fn one_character_insertion_has_a_bounded_allocation_count() {
     assert!(
         allocations() <= 40,
         "hot-path insert allocated {} times",
+        allocations()
+    );
+}
+
+#[test]
+fn owned_insert_avoids_directory_copies() {
+    let schema = Schema::basic();
+    assert!(schema.is_ok(), "basic schema must compile");
+    let Ok(schema) = schema else {
+        return;
+    };
+    let schema = Arc::new(schema);
+    let paragraph = schema.node_kind("paragraph");
+    let Some(paragraph) = paragraph else {
+        return;
+    };
+    let text = TextBlock::new(vec![InlineItem::Text(Run::new(
+        String::from("hello"),
+        MarkSet::empty(),
+    ))]);
+    let Ok(doc) = Doc::from_blocks(
+        Attrs::empty(),
+        vec![Arc::new(Block::text(paragraph, Attrs::empty(), text))],
+    ) else {
+        return;
+    };
+    let state = EditorState::from_doc(Arc::clone(&schema), doc);
+    let mut transaction = state.transaction();
+    assert!(transaction.insert_text(Pos(1), "x").is_ok());
+    let _guard = ALLOC_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
+    reset();
+    let applied = state.apply_owned(transaction);
+    assert!(applied.is_ok(), "owned insert must apply");
+    assert!(
+        allocations() <= 30,
+        "owned hot-path insert allocated {} times",
         allocations()
     );
 }

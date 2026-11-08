@@ -148,6 +148,20 @@ impl Doc {
         })))
     }
 
+    /// Creates a snapshot with one block replaced, mutating in place when uniquely owned.
+    pub(crate) fn replacing_block_owned(
+        mut self,
+        index: usize,
+        block: Block,
+        limits: &crate::Limits,
+    ) -> Result<Self, LimitError> {
+        if let Some(inner) = Arc::get_mut(&mut self.0) {
+            inner.chunks.replacing_in_place(index, block, limits)?;
+            return Ok(self);
+        }
+        self.replacing_block(index, block, limits)
+    }
+
     /// Returns document attributes.
     #[must_use]
     pub fn attrs(&self) -> &Attrs {

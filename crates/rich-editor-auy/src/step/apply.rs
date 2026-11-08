@@ -21,8 +21,12 @@ use crate::schema::Schema;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 use super::structural::replace_blocks;
+
+mod mark_owned;
+
 use super::text_edit;
 use super::{Slice, Step};
+use mark_owned::mark_range_owned;
 
 /// Located top-level block: index, absolute start, and block.
 pub(super) type Located<'a> = (usize, u32, &'a Arc<Block>);
@@ -68,7 +72,26 @@ pub fn apply_step(doc: &Doc, schema: &Schema, step: &Step) -> Result<Doc, StepEr
     }
 }
 
+/// Applies one step, mutating the document in place when it is uniquely owned.
+pub(crate) fn apply_step_owned(doc: Doc, schema: &Schema, step: &Step) -> Result<Doc, StepError> {
+    match step {
+        Step::Replace { from, to, slice } => replace_owned(doc, *from, *to, slice),
+        Step::ReplaceAround { .. } | Step::SetDocAttr { .. } => apply_step(&doc, schema, step),
+        Step::AddMark { from, to, mark } => mark_range_owned(doc, schema, *from, *to, mark, true),
+        Step::RemoveMark { from, to, mark } => {
+            mark_range_owned(doc, schema, *from, *to, mark, false)
+        }
+        Step::SetNodeAttr { pos, attr, value } => {
+            set_node_attr_owned(doc, schema, *pos, *attr, value)
+        }
+    }
+}
+
 fn replace(doc: &Doc, from: Pos, to: Pos, slice: &Slice) -> Result<Doc, StepError> {
+    replace_owned(doc.clone(), from, to, slice)
+}
+
+fn replace_owned(doc: Doc, from: Pos, to: Pos, slice: &Slice) -> Result<Doc, StepError> {
     if from > to {
         return Err(StepError::OutOfBounds {
             position: from.0,
@@ -76,7 +99,7 @@ fn replace(doc: &Doc, from: Pos, to: Pos, slice: &Slice) -> Result<Doc, StepErro
         });
     }
     if !slice.content.is_empty() {
-        return replace_blocks(doc, from, to, slice.content.blocks());
+        return replace_blocks(&doc, from, to, slice.content.blocks());
     }
     if slice.runs.is_some()
         && !slice.text.is_empty()
@@ -87,7 +110,7 @@ fn replace(doc: &Doc, from: Pos, to: Pos, slice: &Slice) -> Result<Doc, StepErro
             operation: Box::from("slice_text_mismatch"),
         });
     }
-    let (index, block_start, block) = locate(doc, from)?;
+    let (index, block_start, block) = locate(&doc, from)?;
     let text = block.as_textblock().ok_or_else(|| StepError::Unsupported {
         operation: Box::from("replace_outside_textblock"),
     })?;
@@ -105,11 +128,8 @@ fn replace(doc: &Doc, from: Pos, to: Pos, slice: &Slice) -> Result<Doc, StepErro
     } else {
         text_edit::replace_text(text, content_start, content_end, &slice.text)?
     };
-    replace_block(
-        doc,
-        index,
-        Block::text(block.kind(), block.attrs().clone(), new_text),
-    )
+    let new_block = Block::text(block.kind(), block.attrs().clone(), new_text);
+    replace_block_owned(doc, index, new_block)
 }
 
 #[allow(
@@ -125,46 +145,7 @@ fn mark_range(
     mark: &crate::model::Mark,
     add: bool,
 ) -> Result<Doc, StepError> {
-    if from >= to {
-        return Ok(doc.clone());
-    }
-    let mut result = doc.clone();
-    let mut offset = 0_u32;
-    for (index, block) in doc.blocks().iter().enumerate() {
-        let block_start = offset;
-        let block_end = offset.saturating_add(block.size().0);
-        offset = block_end;
-        if block_end <= from.0 || block_start >= to.0 {
-            continue;
-        }
-        let Some(text) = block.as_textblock() else {
-            return Err(StepError::Unsupported {
-                operation: Box::from("mark_outside_textblock"),
-            });
-        };
-        if !schema.mark_allowed(block.kind(), mark.id) {
-            return Err(StepError::Unknown {
-                path: Box::from("mark"),
-            });
-        }
-        let start = from.0.max(block_start.saturating_add(1));
-        let end = to.0.min(block_end.saturating_sub(1));
-        if start > end {
-            continue;
-        }
-        let local_start = usize::try_from(start.saturating_sub(block_start.saturating_add(1)))
-            .unwrap_or(usize::MAX);
-        let local_end = usize::try_from(end.saturating_sub(block_start.saturating_add(1)))
-            .unwrap_or(usize::MAX);
-        let new_text = if add {
-            text_edit::add_mark(text, local_start, local_end, mark)?
-        } else {
-            text_edit::remove_mark(text, local_start, local_end, mark)?
-        };
-        let new_block = Block::text(block.kind(), block.attrs().clone(), new_text);
-        result = replace_block(&result, index, new_block)?;
-    }
-    Ok(result)
+    mark_range_owned(doc.clone(), schema, from, to, mark, add)
 }
 
 fn split_block(doc: &Doc, at: Pos, _insert: u32) -> Result<Doc, StepError> {
@@ -197,7 +178,17 @@ fn set_node_attr(
     attr: AttrId,
     value: &AttrValue,
 ) -> Result<Doc, StepError> {
-    let (index, _start, block) = locate(doc, pos)?;
+    set_node_attr_owned(doc.clone(), schema, pos, attr, value)
+}
+
+fn set_node_attr_owned(
+    doc: Doc,
+    schema: &Schema,
+    pos: Pos,
+    attr: AttrId,
+    value: &AttrValue,
+) -> Result<Doc, StepError> {
+    let (index, _start, block) = locate(&doc, pos)?;
     let attrs = if matches!(value, AttrValue::Null) {
         block.attrs().without(attr)
     } else {
@@ -227,7 +218,7 @@ fn set_node_attr(
                 .unwrap_or_default(),
         ),
     };
-    replace_block(doc, index, new_block)
+    replace_block_owned(doc, index, new_block)
 }
 
 fn set_doc_attr(
@@ -261,14 +252,14 @@ fn set_doc_attr(
     Doc::new(attrs, doc.blocks().to_vec(), &crate::Limits::default()).map_err(StepError::Limit)
 }
 
-fn replace_block(doc: &Doc, index: usize, block: Block) -> Result<Doc, StepError> {
+fn replace_block_owned(doc: Doc, index: usize, block: Block) -> Result<Doc, StepError> {
     if index >= doc.blocks().len() {
         return Err(StepError::OutOfBounds {
             position: u32::try_from(index).unwrap_or(u32::MAX),
             size: doc.size().0,
         });
     }
-    doc.replacing_block(index, block, &crate::Limits::default())
+    doc.replacing_block_owned(index, block, &crate::Limits::default())
         .map_err(StepError::Limit)
 }
 

@@ -69,7 +69,6 @@ impl Parser<'_> {
             None => Err(self.error("unexpected_end")),
         }
     }
-
     fn object(&mut self, start: u32) -> Result<JsonValue, ParseError> {
         if self.depth >= self.max_depth {
             return Err(self.error("depth_limit"));
@@ -155,6 +154,36 @@ impl Parser<'_> {
             return Err(self.error("expected_string"));
         }
         self.advance();
+        let start = self.pos;
+        let mut offset = 0_usize;
+        while let Some(&byte) = self.bytes.get(start.saturating_add(offset)) {
+            match byte {
+                b'"' => {
+                    let end = start.saturating_add(offset);
+                    self.pos = end.saturating_add(1);
+                    let Some(slice) = self.bytes.get(start..end) else {
+                        return Err(self.error("invalid_utf8"));
+                    };
+                    let Ok(text) = core::str::from_utf8(slice) else {
+                        return Err(self.error("invalid_utf8"));
+                    };
+                    return Ok(Box::from(text));
+                }
+                b'\\' => {
+                    self.pos = start;
+                    return self.string_escaped();
+                }
+                0x00..=0x1f => {
+                    self.pos = start.saturating_add(offset);
+                    return Err(self.error("control_character"));
+                }
+                _ => offset = offset.saturating_add(1),
+            }
+        }
+        Err(self.error("unterminated_string"))
+    }
+
+    fn string_escaped(&mut self) -> Result<Box<str>, ParseError> {
         let mut out = String::new();
         loop {
             let Some(byte) = self.peek() else {

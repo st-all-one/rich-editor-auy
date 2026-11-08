@@ -68,6 +68,23 @@ impl Chunk {
         self.size
     }
 
+    /// Replaces one block without reallocating the chunk.
+    ///
+    /// Returns `false` when `local` is out of bounds.
+    pub(crate) fn replace_in_place(&mut self, local: usize, block: Block) -> bool {
+        let Some(slot) = self.blocks.get_mut(local) else {
+            return false;
+        };
+        let old_size = slot.size().0;
+        let new_size = block.size().0;
+        *slot = Arc::new(block);
+        for start in self.starts.iter_mut().skip(local.saturating_add(1)) {
+            *start = start.saturating_sub(old_size).saturating_add(new_size);
+        }
+        self.size = self.size.saturating_sub(old_size).saturating_add(new_size);
+        true
+    }
+
     pub(crate) fn replacing(&self, local: usize, block: Block) -> Option<Self> {
         let old = self.blocks.get(local)?;
         let old_size = old.size().0;

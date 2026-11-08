@@ -40,7 +40,11 @@ impl Doc {
     /// keep the public signature allocation-free and panic-free.
     #[must_use]
     pub fn to_json_string(&self, schema: &Schema) -> alloc::string::String {
-        let mut out = alloc::string::String::new();
+        let capacity = usize::try_from(self.size().0)
+            .unwrap_or(0)
+            .saturating_add(self.blocks().len().saturating_mul(32))
+            .saturating_add(64);
+        let mut out = alloc::string::String::with_capacity(capacity);
         if self.to_json_into(schema, &mut out).is_err() {
             return alloc::string::String::new();
         }

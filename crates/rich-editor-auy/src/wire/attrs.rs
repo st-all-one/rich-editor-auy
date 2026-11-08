@@ -9,6 +9,7 @@
 )]
 
 use alloc::boxed::Box;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 
 use crate::error::ParseError;
@@ -18,10 +19,35 @@ use crate::schema::{AttrSpec, AttrType, Schema};
 
 use super::json::{JsonKind, JsonValue};
 
+/// Error path for attribute decoding.
+#[derive(Clone, Copy)]
+pub(crate) enum DecodePath<'a> {
+    DocAttrs,
+    Node(&'a [u32]),
+}
+
+impl DecodePath<'_> {
+    fn boxed(&self) -> Box<str> {
+        match self {
+            Self::DocAttrs => Box::from("doc.attrs"),
+            Self::Node(path) => {
+                let mut out = alloc::string::String::new();
+                for (index, component) in path.iter().enumerate() {
+                    if index > 0 {
+                        out.push('.');
+                    }
+                    out.push_str(&component.to_string());
+                }
+                out.into_boxed_str()
+            }
+        }
+    }
+}
+
 pub(crate) fn decode_attrs(
     value: Option<&JsonValue>,
     specs: &[AttrSpec],
-    path: &str,
+    path: DecodePath<'_>,
 ) -> Result<Attrs, ParseError> {
     let Some(value) = value else {
         return Ok(Attrs::empty());
@@ -30,7 +56,7 @@ pub(crate) fn decode_attrs(
         return Err(ParseError {
             code: Box::from("attrs_not_object"),
             offset: value.start(),
-            path: Box::from(path),
+            path: path.boxed(),
         });
     };
     let mut attrs = Vec::new();
@@ -39,7 +65,7 @@ pub(crate) fn decode_attrs(
             return Err(ParseError {
                 code: Box::from("unknown_attr"),
                 offset: value.start(),
-                path: Box::from(path),
+                path: path.boxed(),
             });
         };
         let decoded = decode_value(value, &spec.kind).map_err(|error| ParseError {
@@ -50,7 +76,7 @@ pub(crate) fn decode_attrs(
             return Err(ParseError {
                 code: Box::from("attr_type"),
                 offset: value.start(),
-                path: Box::from(path),
+                path: path.boxed(),
             });
         }
         attrs.push(Attr {
@@ -63,14 +89,14 @@ pub(crate) fn decode_attrs(
             return Err(ParseError {
                 code: Box::from("required_attr"),
                 offset: value.start(),
-                path: Box::from(path),
+                path: path.boxed(),
             });
         }
     }
     Attrs::new(attrs).ok_or_else(|| ParseError {
         code: Box::from("duplicate_attr"),
         offset: value.start(),
-        path: Box::from(path),
+        path: path.boxed(),
     })
 }
 

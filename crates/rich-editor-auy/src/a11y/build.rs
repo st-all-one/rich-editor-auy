@@ -25,7 +25,7 @@ pub(super) fn block_nodes(
     schema: &Schema,
     block: &Block,
     start: Pos,
-    path: &DocPath,
+    path: DocPath,
     lang: Option<Box<str>>,
     dir: Option<Box<str>>,
 ) -> Vec<A11yNode> {
@@ -33,7 +33,7 @@ pub(super) fn block_nodes(
     let Some(spec) = schema.node(block.kind()) else {
         return Vec::new();
     };
-    let children = child_nodes(schema, block, start, path, lang.clone(), dir.clone());
+    let children = child_nodes(schema, block, start, &path, lang.clone(), dir.clone());
     let Some(a11y) = spec.a11y else {
         return children;
     };
@@ -63,7 +63,7 @@ pub(super) fn block_nodes(
     let colspan = attr_u16(schema, block.kind(), block.attrs(), "colspan");
     let rowspan = attr_u16(schema, block.kind(), block.attrs(), "rowspan");
     Vec::from([A11yNode {
-        path: path.clone(),
+        path,
         id: block.id(),
         role: a11y.role,
         name,
@@ -110,7 +110,7 @@ fn child_nodes(
                     schema,
                     child,
                     Pos(offset),
-                    &path.child(u32::try_from(index).unwrap_or(u32::MAX)),
+                    path.child(u32::try_from(index).unwrap_or(u32::MAX)),
                     lang.clone(),
                     dir.clone(),
                 ));
@@ -130,7 +130,7 @@ fn child_nodes(
                 let range = Range::new(Pos(offset), Pos(offset.saturating_add(size)));
                 match item {
                     InlineItem::Text(run) => nodes.push(A11yNode {
-                        path: item_path.clone(),
+                        path: item_path,
                         id: None,
                         role: super::marks::mark_role(schema, &run.marks),
                         name: Some(Box::from(run.text.as_str())),
@@ -158,7 +158,7 @@ fn child_nodes(
                         {
                             let name = name_for(atom_spec, a11y.name, &atom.attrs, "");
                             nodes.push(A11yNode {
-                                path: item_path.clone(),
+                                path: item_path,
                                 id: None,
                                 role: a11y.role,
                                 name: name.clone(),

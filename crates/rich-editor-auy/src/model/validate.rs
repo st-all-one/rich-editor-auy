@@ -51,31 +51,27 @@ impl Doc {
             .map(|block| block.kind())
             .collect::<Vec<_>>();
         if !schema.doc_allows(&kind_names) {
-            report.issues.push(issue("I1", &DocPath::root(), None));
+            report.issues.push(issue("I1", &[], None));
         }
         for attr in self.attrs() {
             let Some(spec) = schema.doc().attrs.iter().find(|spec| spec.id == attr.id) else {
-                report
-                    .issues
-                    .push(issue("I7", &DocPath::root(), Some(Pos::ZERO)));
+                report.issues.push(issue("I7", &[], Some(Pos::ZERO)));
                 continue;
             };
             if !Schema::value_matches(&spec.kind, &attr.value) {
-                report
-                    .issues
-                    .push(issue("I7", &DocPath::root(), Some(Pos::ZERO)));
+                report.issues.push(issue("I7", &[], Some(Pos::ZERO)));
             }
         }
         let mut offset = 0_u32;
+        let mut path = Vec::new();
         for (index, block) in self.blocks().iter().enumerate() {
-            let path = DocPath::root().child(u32::try_from(index).unwrap_or(u32::MAX));
-            validate_block(block, schema, &path, Pos(offset), &mut ids, &mut report);
+            path.push(u32::try_from(index).unwrap_or(u32::MAX));
+            validate_block(block, schema, &mut path, Pos(offset), &mut ids, &mut report);
+            path.pop();
             offset = offset.saturating_add(block.size().0);
         }
         if offset != self.size().0 {
-            report
-                .issues
-                .push(issue("I10", &DocPath::root(), Some(Pos(offset))));
+            report.issues.push(issue("I10", &[], Some(Pos(offset))));
         }
         report
     }
@@ -88,7 +84,7 @@ impl Doc {
 fn validate_block(
     block: &Block,
     schema: &Schema,
-    path: &DocPath,
+    path: &mut Vec<u32>,
     start: Pos,
     ids: &mut BTreeSet<NodeId>,
     report: &mut DocReport,
@@ -166,8 +162,9 @@ fn validate_block(
             }
             let mut offset = start.0.saturating_add(1);
             for (index, child) in children.iter().enumerate() {
-                let child_path = path.child(u32::try_from(index).unwrap_or(u32::MAX));
-                validate_block(child, schema, &child_path, Pos(offset), ids, report);
+                path.push(u32::try_from(index).unwrap_or(u32::MAX));
+                validate_block(child, schema, path, Pos(offset), ids, report);
+                path.pop();
                 offset = offset.saturating_add(child.size().0);
             }
         }
@@ -186,7 +183,7 @@ fn validate_marks(
     schema: &Schema,
     kind: NodeKind,
     marks: &MarkSet,
-    path: &DocPath,
+    path: &[u32],
     start: Pos,
     report: &mut DocReport,
 ) {
@@ -219,10 +216,14 @@ fn validate_marks(
     }
 }
 
-fn issue(invariant: &'static str, path: &DocPath, position: Option<Pos>) -> DocIssue {
+fn issue(invariant: &'static str, path: &[u32], position: Option<Pos>) -> DocIssue {
+    let mut doc_path = DocPath::root();
+    for component in path {
+        doc_path = doc_path.child(*component);
+    }
     DocIssue {
         invariant,
-        path: path.clone(),
+        path: doc_path,
         position,
     }
 }

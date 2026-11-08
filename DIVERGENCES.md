@@ -15,7 +15,7 @@ recurso.
 | 5 | Memória dentro da fórmula de `plan/05` | `TextBlock::new` reservava capacidade para quatro itens | `Vec::with_capacity(items.len())`; teste `tests/memory.rs` cabe na fórmula |
 | 6 | `A11yTree` sem projeção JSON | `to_json_into`/`to_json_string` produzem JSON canônico estável | `a11y/json.rs`, WASM e CLI `a11y-tree` |
 | 7 | `Slice` carrega `text` além de `Fragment` | Mantido: texto é o caminho quente; `Fragment` cobre substituições estruturais; `Slice::runs` preserva marcas em inversos | Teste `undo_restores_marks_removed_by_delete` |
-| 8 | `apply_owned` deveria evitar a cópia do snapshot | `apply_owned` delega para `apply`; a substituição de bloco copia um chunk de 128 e o diretório, não o vetor inteiro | Semântica idêntica; S2 caiu para ~3,16 µs |
+| 8 | `apply_owned` deveria evitar a cópia do snapshot | `apply_owned` destrói o `Transaction::base`, muta `DocInner`/chunk com `Arc::get_mut` e cai para o caminho imutável quando há clones | Teste de equivalência em `tests/editing.rs`; teste de alocação em `tests/alloc.rs` |
 | 9 | Multi-step undo aplica inversos em ordem reversa | `apply` guarda inversos na ordem dos steps e `History::undo` percorre `.rev()`; o `reverse()` duplicado foi removido | Teste `multi_step_undo_restores_original_text` |
 | 10 | `StepMap` de `ReplaceAround`/split | `new_len` agora é `insert`, não `from + insert` | Teste `tests/mapping.rs` |
 | 11 | `Doc::validate` com I1–I12/I16 | Implementado com path/posição, attrs de root/nó/marca, átomo inline, payload textual, runs, IDs e tamanho | `model/validate.rs`; testes `validation.rs`/`parser_validation.rs` |
@@ -33,19 +33,24 @@ recurso.
 | 23 | Limites de attrs/runs/bloco não eram aplicados | `model/limits.rs` percorre attrs, marcas, runs e texto em `Doc::new` e em substituições | `enforces_*_limits` |
 | 24 | A11y usava índice da árvore, não `DocPath` | `A11yNode.path` é projetado do documento e `validate_a11y` usa esse path | `a11y_reports_*` |
 | 25 | `schema!` era placeholder silencioso | Proc-macro real com parser de tokens para doc/nós/marcas/attrs e teste de integração; compila no `no_std` (retorna `SchemaError`) | `tests/macro_schema.rs` |
-| 26 | `apply` copiava todo o vetor de blocos e `starts` | Blocos em chunks de 128; substituição copia um chunk + diretório | `model/chunks.rs`, `tests/chunks.rs`; S2 106,5 → 3,13 µs |
-| 27 | Documentos pequenos pagavam o diretório de chunks | Até 128 blocos usam um chunk flat; acima disso, diretório de chunks | `model/chunk.rs`; S1 2,05 → 1,97 µs |
+| 26 | `apply` copiava todo o vetor de blocos e `starts` | Blocos em chunks de 128; substituição copia um chunk + diretório | `model/chunks.rs`, `tests/chunks.rs`; S2 106,5 → 2,89 µs |
+| 27 | Documentos pequenos pagavam o diretório de chunks | Até 128 blocos usam um chunk flat; acima disso, diretório de chunks | `model/chunk.rs`; S1 2,05 → 1,73 µs |
+| 28 | `apply_owned` pagava cópia de diretório e chunks | Caminho owned com `Arc::get_mut`: 35 → 25 alocações no insert de 1 char | `model/doc.rs`, `model/chunks.rs`, `state/mod.rs`; `tests/alloc.rs` |
+| 29 | Inversão fazia dois splits para extrair um intervalo | `text_edit::slice_text` extrai o intervalo uma vez, com as mesmas marcas/átomos | `step/text_edit.rs`, `step/invert.rs` |
+| 30 | Parser montava uma `String` de path por nó e crescia `String` byte a byte | Path em pilha (`DecodePath`) materializado só no erro e scanner de strings sem escape por slice | `wire/parser.rs`, `wire/attrs.rs`, `wire/json_parser.rs`; from_json 34,78 → 21,17 ms; `check_json` 20,37 → 8,89 ms |
+| 31 | Writer crescia o `String` final e escrevia run a run | Capacidade pré-calculada e `write_string` copia trechos sem escape de uma vez | `wire/mod.rs`, `wire/writer.rs`; `to_json_string` 2,97 → 1,12 ms |
+| 32 | A11y clonava o `DocPath` ao inserir o nó | `block_nodes` recebe o path por valor e move para o nó; filhos recebem paths novos | `a11y/build.rs`, `a11y/tree.rs`; validate_a11y 11,34 → 11,04 ms |
 
 ## Divergências abertas
 
 | # | Área | Estado | Impacto | Próximo passo |
 |---|---|---|---|---|
 | A | `schema!` | Front-end real, mas cobre doc/nó/marca/content/group/marks/attrs básicos; sem acessores tipados e sem testes compile-fail | Extensões como `a11y` declarativa e `trybuild` ainda não têm contrato | Adicionar a11y declarativa, acessores e `trybuild`; documentar subconjunto |
-| B | `apply_owned` | Blocos agora em chunks de 128; `replacing_block` copia um chunk + diretório, não o documento inteiro | S2 ~3,13 µs (alvo 10 µs, atingido); S1 ~1,97 µs contra alvo de 0,1 µs e 35 alocações | `apply_owned` e redução de alocações pequenas |
-| C | Parser JSON | S2 ~34,8 ms contra alvo de 15 ms; surrogate pairs resolvidos; `JsonValue` carrega offset inicial, mas spans completos de campos ainda não | Parse acima do orçamento; offsets são do valor, não do token exato | Perfilar alocações e carregar intervalo completo por valor |
-| D | `validate_a11y` | S2 ~11,3 ms contra alvo de 10 ms | Validação acima do orçamento | Revisar alocações por nó/cachear árvore no adaptador |
+| B | `apply_owned` | Implementado com mutação in-place quando o snapshot é único; 35 → 25 alocações | S2 2,89 µs no caminho imutável e 3,65 µs no owned; S1 1,73 µs contra alvo de 0,1 µs | Reduzir custo fixo do owned e alocações pequenas |
+| C | Parser JSON | `check_json` S2 8,89 ms; `from_json` S2 21,17 ms contra alvo de 15 ms; surrogate pairs resolvidos; `JsonValue` carrega offset inicial, mas spans completos de campos ainda não | Parse bruto abaixo do alvo; decode/validação ainda acima | Combinar decode com validação incremental e reduzir caminhos de `Doc::new`/`validate` |
+| D | `validate_a11y` | S2 ~11,04 ms contra alvo de 10 ms | Validação acima do orçamento | Revisar alocações `DocPath`/texto por nó e cachear a árvore no adaptador |
 | E | `iai-callgrind`/baseline | Não instalado; `criterion` é informativo | Sem gate determinístico de instruções/regressão de 5% | Adicionar job com valgrind e `bench/baseline.json` |
-| F | Alocação do caminho quente | Inserção de 1 char = 35 alocações; chunks trocam O(n) por diretório pequeno | Acima do alvo de 0 além do step, mas tempo S2 caiu ~34× | `apply_owned` in-place e buffers reutilizáveis |
+| F | Alocação do caminho quente | Inserção de 1 char = 35 alocações no `apply` e 25 no `apply_owned`; chunks trocam O(n) por diretório pequeno | Acima do alvo de 0 além do step, mas tempo S2 caiu ~37× | Buffers reutilizáveis e remoção das alocações pequenas restantes |
 | G | Cenários de bench | Só S1/S2; faltam S0/S3/S4 e operações delete/mark/split/join/undo | Cobertura de `plan/05` incompleta | Adicionar `benches/hot.rs`/`wire.rs` e rodar S0–S4 |
 | H | Limites | Aplicados em `Doc::new`/`replacing_block` para attrs, marcas, runs, texto e strings; o decode ainda pode materializar valores antes da rejeição | Estrutura acima do orçamento é rejeitada, mas memória pode ser alocada antes | Mover a checagem para `decode_attrs`/`decode_marks` e testar o limite de attrs por nó |
 | I | Fuzz | Alvos existem, mas não foram executados neste host (sem `cargo-fuzz`/nightly) | Cobertura de parser/a11y não exercitada localmente | Rodar no CI e anexar corpus |

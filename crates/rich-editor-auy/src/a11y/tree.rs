@@ -101,7 +101,7 @@ impl Doc {
                 schema,
                 block,
                 Pos(offset),
-                &DocPath::root().child(u32::try_from(index).unwrap_or(u32::MAX)),
+                DocPath::root().child(u32::try_from(index).unwrap_or(u32::MAX)),
                 lang.clone(),
                 dir.clone(),
             ));

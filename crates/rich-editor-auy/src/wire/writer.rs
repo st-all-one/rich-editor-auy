@@ -181,20 +181,28 @@ fn write_marks(marks: &MarkSet, schema: &Schema, out: &mut impl Write) -> fmt::R
 )]
 pub(crate) fn write_string(value: &str, out: &mut impl Write) -> fmt::Result {
     out.write_char('"')?;
-    for character in value.chars() {
-        match character {
-            '"' => out.write_str("\\\"")?,
-            '\\' => out.write_str("\\\\")?,
-            '\u{0008}' => out.write_str("\\b")?,
-            '\u{000c}' => out.write_str("\\f")?,
-            '\n' => out.write_str("\\n")?,
-            '\r' => out.write_str("\\r")?,
-            '\t' => out.write_str("\\t")?,
-            value if u32::from(value) < 0x20 => {
-                write!(out, "\\u{:04x}", u32::from(value))?;
-            }
-            value => out.write_char(value)?,
+    let mut start = 0_usize;
+    for (index, byte) in value.bytes().enumerate() {
+        if byte >= 0x20 && byte != b'"' && byte != b'\\' {
+            continue;
         }
+        if start < index {
+            out.write_str(&value[start..index])?;
+        }
+        match byte {
+            b'"' => out.write_str("\\\"")?,
+            b'\\' => out.write_str("\\\\")?,
+            0x08 => out.write_str("\\b")?,
+            0x0c => out.write_str("\\f")?,
+            b'\n' => out.write_str("\\n")?,
+            b'\r' => out.write_str("\\r")?,
+            b'\t' => out.write_str("\\t")?,
+            value => write!(out, "\\u{:04x}", u32::from(value))?,
+        }
+        start = index.saturating_add(1);
+    }
+    if start < value.len() {
+        out.write_str(&value[start..])?;
     }
     out.write_char('"')
 }

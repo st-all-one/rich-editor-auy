@@ -8,17 +8,17 @@
 
 | Medida | Resultado | Alvo (`plan/05`) | Estado |
 |---|---:|---:|---|
-| `apply` + inserir 1 char (S2) | 3,13 µs | ≤ 10 µs | **ok** |
-| `apply` + inserir 1 char (S1) | 1,97 µs | ≤ 100 ns | **acima** |
-| `to_json_string` | 2,97 ms | ≤ 6 ms | ok |
-| `from_json` (S2) | 34,78 ms | ≤ 15 ms | **acima** |
+| `apply` + inserir 1 char (S2) | 2,89 µs | ≤ 10 µs | **ok** |
+| `apply` + inserir 1 char (S1) | 1,73 µs | ≤ 100 ns | **acima** |
+| `to_json_string` | 1,12 ms | ≤ 6 ms | ok |
+| `from_json` (S2) | 21,17 ms | ≤ 15 ms | **acima** |
 | `from_json` (S1) | 344,0 µs | ≤ 15 ms (S2) | informativo |
-| `a11y_tree` | 10,87 ms | orçamento de render | informativo |
-| `validate_a11y` | 11,34 ms | ≤ 10 ms | **acima** |
+| `a11y_tree` | 10,50 ms | orçamento de render | informativo |
+| `validate_a11y` | 11,04 ms | ≤ 10 ms | **acima** |
 
 ## Artefato WASM
 
-`scripts/build_wasm.sh` gerou `rich_editor_auy_wasm_bg.wasm` com 329,3 KB no pacote JSR. `wasm-opt`
+`scripts/build_wasm.sh` gerou `rich_editor_auy_wasm_bg.wasm` com 335,4 KB no pacote JSR. `wasm-opt`
 não estava instalado; o valor é o artefato sem otimização adicional. O checksum BLAKE3 não foi
 gerado porque `b3sum` também não está instalado.
 
@@ -46,7 +46,8 @@ Perfil instrumentado em S2 (10.000 blocos, 100 bytes por bloco):
 | `apply_step()` antes dos chunks | 104,8 µs | 11 | 120.927 B |
 | `ChangeSet::from_steps()` | 77 ns | 3 | 81 B |
 | `state.apply()` antes dos chunks | 106,5 µs | 32 | 123.325 B |
-| `state.apply()` com chunks | 3,13 µs | 35 | ~5,9 KiB |
+| `state.apply()` com chunks | 2,89 µs | 35 | ~5,9 KiB |
+| `state.apply_owned()` | 3,65 µs | 25 | ~4,5 KiB |
 
 `apply_step` escalava linearmente com o número de blocos (~10 ns/bloco em 10k), porque copiava o
 vetor de 10.000 `Arc<Block>` e o índice de inícios. Um protótipo isolado mostrou:
@@ -59,8 +60,9 @@ vetor de 10.000 `Arc<Block>` e o índice de inícios. Um protótipo isolado most
 A implementação adotou chunks de 128 com diretório de `Arc<Chunk>` e índice de inícios por chunk.
 O caminho quente agora copia um chunk e o diretório, não o documento, e reutiliza o `starts` do
 chunk ajustando apenas o sufixo. O custo restante é dominado pelo texto do bloco, inversão e pelas
-35 alocações pequenas. S1 (100 blocos) usa o chunk flat e ainda paga texto/inversão, por isso 1,97 µs.
-Próximos passos: `apply_owned` in-place e reduzir a inversão a um split.
+35 alocações pequenas. S1 (100 blocos) usa o chunk flat e ainda paga texto/inversão, por isso 1,73 µs. `apply_owned` elimina 10 alocações ao mutar o `DocInner`/chunk em
+ vez de copiar, mas o caminho de uma etapa ainda fica próximo do imutável; a inversão agora
+ usa um único `slice_text`.
 
 ## A/B com Serde
 
@@ -70,8 +72,8 @@ descarta a árvore); o Serde parseia para `serde_json::Value`. A serialização 
 
 | Operação | AUY | Serde | Leitura |
 |---|---:|---:|---|
-| Parse S2 | 20,37 ms | 19,77 ms | Serde ~3% mais rápido |
-| Serialize S2 | 2,99 ms | 3,95 ms | AUY ~24% mais rápido |
+| Parse S2 | 8,89 ms | 19,77 ms | AUY ~2,2× mais rápido |
+| Serialize S2 | 1,12 ms | 3,95 ms | AUY ~3,5× mais rápido |
 
 O parse é praticamente empatado; a diferença está no modelo de árvore e na alocação de strings.
 Na escrita, o writer incremental da AUY evita a árvore intermediária e a maquinaria de `Serialize`
