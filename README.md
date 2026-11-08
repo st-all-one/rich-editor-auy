@@ -94,8 +94,9 @@ crates.io crate, a WASM artifact, a Composer package and a Deno 2.0/JSR workspac
 - **References:** `DocId`/`NodeId` + typed `RefTarget`; the core preserves and validates shape, the
   optional `refs` crate resolves a corpus, backlinks and dangling targets.
 - **Accessibility (AUY):** the core supplies the semantic tree, names/`alt`/`lang`/`dir`/order and
-  validation; the adapter maps roles to native/ARIA and handles keyboard/focus/IME; the consumer
-  owns contrast, focus styles and the final WCAG audit. There is no `aria: false` opt-out; `data`
+  validation; the adapter maps roles to native/ARIA and renders the semantic tree; the host owns
+  keyboard/focus/IME and dispatches core commands; the consumer owns contrast, focus styles and the
+  final WCAG audit. There is no `aria: false` opt-out; `data`
   explicitly transfers rendering responsibility.
 
 ```ts
