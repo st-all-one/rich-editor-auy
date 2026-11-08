@@ -16,6 +16,9 @@ include = ["src/**/*", "Cargo.toml", "README.md", "LICENSE-MIT", "LICENSE-APACHE
 [lib]
 proc-macro = true
 
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
 
 [lints]
 workspace = true

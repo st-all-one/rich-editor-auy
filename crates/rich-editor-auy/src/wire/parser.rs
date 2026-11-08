@@ -57,7 +57,7 @@ pub(super) fn decode_doc(
     }
     let doc = Doc::new(attrs, blocks, &options.limits).map_err(|_error| ParseError {
         code: Box::from("limit"),
-        offset: 0,
+        offset: value.start(),
         path: Box::from("doc"),
     })?;
     let report = doc.validate(schema);
@@ -82,7 +82,7 @@ fn decode_block(
     if depth > options.limits.max_depth {
         return Err(ParseError {
             code: Box::from("depth_limit"),
-            offset: 0,
+            offset: value.start(),
             path: Box::from(path),
         });
     }
@@ -91,17 +91,17 @@ fn decode_block(
         .and_then(JsonValue::as_str)
         .ok_or_else(|| ParseError {
             code: Box::from("missing_type"),
-            offset: 0,
+            offset: value.start(),
             path: Box::from(path),
         })?;
     let kind = schema.node_kind(node_type).ok_or_else(|| ParseError {
         code: Box::from("unknown_node"),
-        offset: 0,
+        offset: value.start(),
         path: Box::from(path),
     })?;
     let spec = schema.node(kind).ok_or_else(|| ParseError {
         code: Box::from("unknown_node"),
-        offset: 0,
+        offset: value.start(),
         path: Box::from(path),
     })?;
     let attrs = decode_attrs(value.get("attrs"), &spec.attrs, path)?;
@@ -110,7 +110,7 @@ fn decode_block(
         if children.is_some() {
             return Err(ParseError {
                 code: Box::from("atom_with_content"),
-                offset: 0,
+                offset: value.start(),
                 path: Box::from(path),
             });
         }
@@ -134,7 +134,7 @@ fn decode_block(
                 .and_then(|name| schema.node_kind(name))
                 .ok_or_else(|| ParseError {
                     code: Box::from("unknown_node"),
-                    offset: 0,
+                    offset: child.start(),
                     path: Box::from(path),
                 })
         })
@@ -153,7 +153,7 @@ fn decode_block(
         text.normalize(options.limits.max_block_text_bytes)
             .map_err(|_| ParseError {
                 code: Box::from("run_limit"),
-                offset: 0,
+                offset: value.start(),
                 path: Box::from(path),
             })?;
         return Ok(Block::text(kind, attrs, text));
@@ -177,7 +177,7 @@ fn decode_inline(value: &JsonValue, schema: &Schema, path: &str) -> Result<Inlin
         .and_then(JsonValue::as_str)
         .ok_or_else(|| ParseError {
             code: Box::from("missing_type"),
-            offset: 0,
+            offset: value.start(),
             path: Box::from(path),
         })?;
     if node_type == "text" {
@@ -186,7 +186,7 @@ fn decode_inline(value: &JsonValue, schema: &Schema, path: &str) -> Result<Inlin
             .and_then(JsonValue::as_str)
             .ok_or_else(|| ParseError {
                 code: Box::from("missing_text"),
-                offset: 0,
+                offset: value.start(),
                 path: Box::from(path),
             })?;
         let marks = decode_marks(value.get("marks"), schema)?;
@@ -194,12 +194,12 @@ fn decode_inline(value: &JsonValue, schema: &Schema, path: &str) -> Result<Inlin
     }
     let kind = schema.node_kind(node_type).ok_or_else(|| ParseError {
         code: Box::from("unknown_inline"),
-        offset: 0,
+        offset: value.start(),
         path: Box::from(path),
     })?;
     let spec = schema.node(kind).ok_or_else(|| ParseError {
         code: Box::from("unknown_inline"),
-        offset: 0,
+        offset: value.start(),
         path: Box::from(path),
     })?;
     let attrs = decode_attrs(value.get("attrs"), &spec.attrs, path)?;

@@ -24,7 +24,18 @@ e o projeto usa Versionamento Semântico.
 
 ### Alterado
 
-- Nada ainda.
+- `schema!` deixou de ser placeholder: proc-macro real para doc, nós, marcas, grupos, conteúdo e
+  atributos tipados, com teste de integração e expansão `no_std`.
+- Parser JSON decodifica surrogate pairs, reporta offsets de origem nos erros e aplica os limites
+  de attrs, marcas, runs e texto no documento final.
+- A árvore de acessibilidade carrega `DocPath` e a validação usa o path real do documento.
+- Substituições de bloco no caminho quente reutilizam o índice de inícios e revalidam apenas o
+  bloco alterado.
+
+### Corrigido
+
+- Inversão de múltiplos steps, `StepMap` de split, preservação de marcas em `Slice::runs`, remoção
+  de attrs por `Null`, validação estrutural no wire, allowlist de URLs no DOM e envelope no CLI/TS.
 
 ### Removido
 

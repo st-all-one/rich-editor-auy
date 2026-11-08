@@ -29,25 +29,29 @@ recurso.
 | 19 | Link era hardcoded em `build.rs` | Role/`href` vêm de `MarkSpec.a11y` e attrs; preset declara `link` como `A11yRole::Link` | `a11y/marks.rs`, teste `a11y_maps_link_marks_to_link_role` |
 | 20 | Fuzz/Miri/a11y gates não executavam | `a11y` tem `tests/a11y.rs`; Miri usa `miri_smoke`; fuzz tem `json_parse`, `a11y_tree`, `apply_step` | Makefile/CI |
 | 21 | `trybuild` era dependência de workspace sem uso | Removido | `cargo machete` limpo |
+| 22 | Wire aceitava surrogates isolados e offsets ficavam em 0 | `json_escape` decodifica pares `\uD83D\uDE00`, rejeita isolados e os decoders usam `JsonValue::start()` | `tests/parser_limits.rs` |
+| 23 | Limites de attrs/runs/bloco não eram aplicados | `model/limits.rs` percorre attrs, marcas, runs e texto em `Doc::new` e em substituições | `enforces_*_limits` |
+| 24 | A11y usava índice da árvore, não `DocPath` | `A11yNode.path` é projetado do documento e `validate_a11y` usa esse path | `a11y_reports_*` |
+| 25 | `schema!` era placeholder silencioso | Proc-macro real com parser de tokens para doc/nós/marcas/attrs e teste de integração; compila no `no_std` (retorna `SchemaError`) | `tests/macro_schema.rs` |
 
 ## Divergências abertas
 
 | # | Área | Estado | Impacto | Próximo passo |
 |---|---|---|---|---|
-| A | `schema!` | Proc-macro placeholder devolve `Schema::builder().build()` e ignora a entrada | Consumidor não declara schema pelo macro; crate não entrega o contrato D09 | Implementar parser declarativo + `trybuild`, ou retirar a crate da distribuição |
-| B | `apply_owned` | Não otimizado; caminho imutável | S2 ~170,1 µs para 1 char contra alvo de 10 µs | Mutação in-place/`Arc::get_mut`/chunking (D06) |
-| C | Parser JSON | S2 ~27,5 ms contra alvo de 15 ms; offsets semânticos ainda 0; pares surrogate `\uD83D\uDE00` rejeitados | Parse acima do orçamento e interop PHP/Python com emoji | Perfilar alocações, carregar spans no `JsonValue`, decodificar surrogate pairs |
-| D | `validate_a11y` | S2 ~12,1 ms contra alvo de 10 ms | Validação acima do orçamento | Revisar alocações por nó/cachear árvore no adaptador |
+| A | `schema!` | Front-end real, mas cobre doc/nó/marca/content/group/marks/attrs básicos; sem acessores tipados e sem testes compile-fail | Extensões como `a11y` declarativa e `trybuild` ainda não têm contrato | Adicionar a11y declarativa, acessores e `trybuild`; documentar subconjunto |
+| B | `apply_owned` | Não é mutação in-place; `replacing_block` já evita revalidar o documento inteiro | S2 ~107,5 µs para 1 char contra alvo de 10 µs | Mutação in-place/`Arc::get_mut`/chunking (D06) |
+| C | Parser JSON | S2 ~35,6 ms contra alvo de 15 ms; surrogate pairs resolvidos; `JsonValue` carrega offset inicial, mas spans completos de campos ainda não | Parse acima do orçamento; offsets são do valor, não do token exato | Perfilar alocações e carregar intervalo completo por valor |
+| D | `validate_a11y` | S2 ~11,4 ms contra alvo de 10 ms | Validação acima do orçamento | Revisar alocações por nó/cachear árvore no adaptador |
 | E | `iai-callgrind`/baseline | Não instalado; `criterion` é informativo | Sem gate determinístico de instruções/regressão de 5% | Adicionar job com valgrind e `bench/baseline.json` |
 | F | Alocação do caminho quente | Inserção de 1 char = 20 alocações; alvo do plano é 0 além do step | Custo acima do alvo | Otimizar `Doc::new`/starts/inversão e recalibrar |
 | G | Cenários de bench | Só S1/S2; faltam S0/S3/S4 e operações delete/mark/split/join/undo | Cobertura de `plan/05` incompleta | Adicionar `benches/hot.rs`/`wire.rs` e rodar S0–S4 |
-| H | Limites | `max_runs_per_block`, `max_attrs_per_node`, `max_mark_attrs`, `max_attr_string_bytes` não são todos aplicados; `max_block_text_bytes` não limita total do bloco | Wire/API pode aceitar estrutura acima do orçamento | Aplicar em `Doc::new`/`decode_attrs`/`normalize` e testar |
+| H | Limites | Aplicados em `Doc::new`/`replacing_block` para attrs, marcas, runs, texto e strings; o decode ainda pode materializar valores antes da rejeição | Estrutura acima do orçamento é rejeitada, mas memória pode ser alocada antes | Mover a checagem para `decode_attrs`/`decode_marks` e testar o limite de attrs por nó |
 | I | Fuzz | Alvos existem, mas não foram executados neste host (sem `cargo-fuzz`/nightly) | Cobertura de parser/a11y não exercitada localmente | Rodar no CI e anexar corpus |
 | J | PHP | `php`, `composer`, PHPUnit e PHPStan ausentes no host | Pacote não executado; validação só por inspeção | CI `php` executa validate/audit/PHPUnit/PHPStan |
 | K | WASM package | `cargo package` exige core publicado no crates.io | `make check` publica só core/macros; `make package-wasm` separado | Release ordenado core → macros → wasm |
 | L | DOM adapter | Renderiza a árvore semântica e restaura o host; edição é intenção via `onInput`, sem aplicar DOM | Host precisa chamar comandos do core; seleção/IME/clipboard não são convertidos automaticamente | Mapear seleção/entrada no adaptador ou declarar contrato no README |
 | M | `axe-core`/`wasm-opt` | Ausentes no host | Auditoria de DOM e otimização final do WASM não comprovadas | Jobs de navegador/release |
-| N | A11y paths | Issue de a11y usa índice da árvore, não `DocPath` | Diagnóstico A001/A003 pode divergir do path do documento | Guardar `DocPath` em `A11yNode` |
+
 
 ## Regra de atualização
 

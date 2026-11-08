@@ -15,7 +15,8 @@ use alloc::vec::Vec;
 
 use crate::error::ParseError;
 
-use super::json::JsonValue;
+use super::json::{JsonKind, JsonValue};
+use super::json_escape::escape;
 
 /// Parses one strict JSON value.
 ///
@@ -51,36 +52,41 @@ impl Parser<'_> {
         if self.depth > self.max_depth {
             return Err(self.error("depth_limit"));
         }
+        let start = self.offset();
         match self.peek() {
-            Some(b'{') => self.object(),
-            Some(b'[') => self.array(),
-            Some(b'"') => self.string().map(JsonValue::Str),
-            Some(b't') => self.literal(b"true", JsonValue::Bool(true)),
-            Some(b'f') => self.literal(b"false", JsonValue::Bool(false)),
-            Some(b'n') => self.literal(b"null", JsonValue::Null),
-            Some(b'-' | b'0'..=b'9') => self.number().map(JsonValue::Int),
+            Some(b'{') => self.object(start),
+            Some(b'[') => self.array(start),
+            Some(b'"') => self
+                .string()
+                .map(|value| JsonValue::new(JsonKind::Str(value), start)),
+            Some(b't') => self.literal(b"true", JsonKind::Bool(true), start),
+            Some(b'f') => self.literal(b"false", JsonKind::Bool(false), start),
+            Some(b'n') => self.literal(b"null", JsonKind::Null, start),
+            Some(b'-' | b'0'..=b'9') => self
+                .number()
+                .map(|value| JsonValue::new(JsonKind::Int(value), start)),
             Some(_) => Err(self.error("unexpected_token")),
             None => Err(self.error("unexpected_end")),
         }
     }
 
-    fn object(&mut self) -> Result<JsonValue, ParseError> {
+    fn object(&mut self, start: u32) -> Result<JsonValue, ParseError> {
         if self.depth >= self.max_depth {
             return Err(self.error("depth_limit"));
         }
         self.depth = self.depth.saturating_add(1);
         let result = self.object_body();
         self.depth = self.depth.saturating_sub(1);
-        result
+        result.map(|kind| JsonValue::new(kind, start))
     }
 
-    fn object_body(&mut self) -> Result<JsonValue, ParseError> {
+    fn object_body(&mut self) -> Result<JsonKind, ParseError> {
         self.advance();
         self.skip_space();
         let mut members: Vec<(Box<str>, JsonValue)> = Vec::new();
         if self.peek() == Some(b'}') {
             self.advance();
-            return Ok(JsonValue::Object(members.into_boxed_slice()));
+            return Ok(JsonKind::Object(members.into_boxed_slice()));
         }
         loop {
             self.skip_space();
@@ -108,26 +114,26 @@ impl Parser<'_> {
                 return Err(self.error("duplicate_key"));
             }
         }
-        Ok(JsonValue::Object(members.into_boxed_slice()))
+        Ok(JsonKind::Object(members.into_boxed_slice()))
     }
 
-    fn array(&mut self) -> Result<JsonValue, ParseError> {
+    fn array(&mut self, start: u32) -> Result<JsonValue, ParseError> {
         if self.depth >= self.max_depth {
             return Err(self.error("depth_limit"));
         }
         self.depth = self.depth.saturating_add(1);
         let result = self.array_body();
         self.depth = self.depth.saturating_sub(1);
-        result
+        result.map(|kind| JsonValue::new(kind, start))
     }
 
-    fn array_body(&mut self) -> Result<JsonValue, ParseError> {
+    fn array_body(&mut self) -> Result<JsonKind, ParseError> {
         self.advance();
         self.skip_space();
         let mut values = Vec::new();
         if self.peek() == Some(b']') {
             self.advance();
-            return Ok(JsonValue::Array(values.into_boxed_slice()));
+            return Ok(JsonKind::Array(values.into_boxed_slice()));
         }
         loop {
             values.push(self.value()?);
@@ -141,7 +147,7 @@ impl Parser<'_> {
                 _ => return Err(self.error("expected_array_end")),
             }
         }
-        Ok(JsonValue::Array(values.into_boxed_slice()))
+        Ok(JsonKind::Array(values.into_boxed_slice()))
     }
 
     fn string(&mut self) -> Result<Box<str>, ParseError> {
@@ -161,7 +167,7 @@ impl Parser<'_> {
                 }
                 b'\\' => {
                     self.advance();
-                    self.escape(&mut out)?;
+                    escape(self, &mut out)?;
                 }
                 0x00..=0x1f => return Err(self.error("control_character")),
                 _ => {
@@ -177,32 +183,6 @@ impl Parser<'_> {
                 }
             }
         }
-    }
-
-    fn escape(&mut self, out: &mut String) -> Result<(), ParseError> {
-        let Some(byte) = self.peek() else {
-            return Err(self.error("unterminated_escape"));
-        };
-        self.advance();
-        match byte {
-            b'"' => out.push('"'),
-            b'\\' => out.push('\\'),
-            b'/' => out.push('/'),
-            b'b' => out.push('\u{0008}'),
-            b'f' => out.push('\u{000c}'),
-            b'n' => out.push('\n'),
-            b'r' => out.push('\r'),
-            b't' => out.push('\t'),
-            b'u' => {
-                let value = super::json_hex::hex4(self)?;
-                let Some(character) = char::from_u32(value) else {
-                    return Err(self.error("invalid_escape"));
-                };
-                out.push(character);
-            }
-            _ => return Err(self.error("invalid_escape")),
-        }
-        Ok(())
     }
 
     fn number(&mut self) -> Result<i64, ParseError> {
@@ -230,14 +210,19 @@ impl Parser<'_> {
             .map_err(|_| self.error("integer_out_of_range"))
     }
 
-    fn literal(&mut self, expected: &[u8], value: JsonValue) -> Result<JsonValue, ParseError> {
+    fn literal(
+        &mut self,
+        expected: &[u8],
+        kind: JsonKind,
+        start: u32,
+    ) -> Result<JsonValue, ParseError> {
         for expected_byte in expected {
             if self.peek() != Some(*expected_byte) {
                 return Err(self.error("invalid_literal"));
             }
             self.advance();
         }
-        Ok(value)
+        Ok(JsonValue::new(kind, start))
     }
 
     fn advance_utf8(&mut self) -> Result<(), ParseError> {

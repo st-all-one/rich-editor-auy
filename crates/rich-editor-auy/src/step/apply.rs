@@ -262,15 +262,14 @@ fn set_doc_attr(
 }
 
 fn replace_block(doc: &Doc, index: usize, block: Block) -> Result<Doc, StepError> {
-    let mut blocks = doc.blocks().to_vec();
-    let Some(slot) = blocks.get_mut(index) else {
+    if index >= doc.blocks().len() {
         return Err(StepError::OutOfBounds {
             position: u32::try_from(index).unwrap_or(u32::MAX),
             size: doc.size().0,
         });
-    };
-    *slot = Arc::new(block);
-    Doc::new(doc.attrs().clone(), blocks, &crate::Limits::default()).map_err(StepError::Limit)
+    }
+    doc.replacing_block(index, block, &crate::Limits::default())
+        .map_err(StepError::Limit)
 }
 
 #[cfg(feature = "visits")]

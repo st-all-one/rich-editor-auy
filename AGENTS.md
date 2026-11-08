@@ -15,7 +15,9 @@ Deno/JSR, adaptador DOM, pacote Composer e CLI. `make check` (fmt, clippy, teste
 a11y, file-length, links, zero-style, package) é o gate local; `make check-ecosystem` cobre Deno e
 PHP quando as ferramentas existem.
 
-F0–F3.5 estão materializados; lacunas conhecidas estão em `DIVERGENCES.md`. F4 tem benchmarks `criterion`, testes de alocação/memória e um gate de
+F0–F3.5 estão materializados; `schema!` é um front-end real (subconjunto documentado), o wire valida
+surrogates/limites e a árvore a11y carrega `DocPath`. Lacunas conhecidas estão em
+`DIVERGENCES.md`. F4 tem benchmarks `criterion`, testes de alocação/memória e um gate de
 consultas; `iai-callgrind`, baseline de instruções, fuzz executado e calibração de desempenho ainda
 são pendências registradas em [`DIVERGENCES.md`](DIVERGENCES.md). PHP não foi executado neste host
 por ausência de `php`/`composer`; o CI tem o job correspondente.

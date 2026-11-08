@@ -25,6 +25,8 @@ pub enum CellScope {
 /// One semantic node.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct A11yNode {
+    /// Stable document path.
+    pub path: DocPath,
     /// Stable node anchor.
     pub id: Option<NodeId>,
     /// Semantic role.
@@ -106,6 +108,7 @@ impl Doc {
             offset = offset.saturating_add(block.size().0);
         }
         let root = A11yNode {
+            path: DocPath::root(),
             id: None,
             role: A11yRole::Document,
             name: None,

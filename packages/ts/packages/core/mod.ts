@@ -20,6 +20,7 @@ export interface AuyError {
 }
 
 export interface A11yNode {
+  readonly path: string;
   readonly role: string;
   readonly id?: string;
   readonly name?: string;

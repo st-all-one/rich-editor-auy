@@ -40,12 +40,12 @@ fn a11y_reports_missing_image_alt() {
         return;
     };
     let report = doc.validate_a11y(&schema);
-    assert!(
-        report
-            .errors
-            .iter()
-            .any(|issue| issue.code.as_str() == "A001")
-    );
+    let issue = report
+        .errors
+        .iter()
+        .find(|issue| issue.code.as_str() == "A001");
+    assert!(issue.is_some(), "A001 must be reported");
+    assert_eq!(issue.map(|issue| issue.path.as_str()), Some("0"));
 }
 
 #[test]
@@ -59,12 +59,12 @@ fn a11y_reports_heading_without_text() {
         return;
     };
     let report = doc.validate_a11y(&schema);
-    assert!(
-        report
-            .errors
-            .iter()
-            .any(|issue| issue.code.as_str() == "A003")
-    );
+    let issue = report
+        .errors
+        .iter()
+        .find(|issue| issue.code.as_str() == "A003");
+    assert!(issue.is_some(), "A003 must be reported");
+    assert_eq!(issue.map(|issue| issue.path.as_str()), Some("0"));
 }
 
 #[test]

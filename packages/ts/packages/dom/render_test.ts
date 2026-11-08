@@ -51,6 +51,7 @@ function render(node: A11yNode): FakeElement {
   const doc = new FakeDocument();
   const host = new FakeElement("host", doc);
   renderTree(host as unknown as HTMLElement, {
+    path: "",
     role: "document",
     range: { from: 0, to: 4 },
     children: [node],
@@ -60,9 +61,11 @@ function render(node: A11yNode): FakeElement {
 
 Deno.test("renders native semantic elements without classes or styles", () => {
   const host = render({
+    path: "0",
     role: "paragraph",
     range: { from: 0, to: 4 },
     children: [{
+      path: "0/0",
       role: "text",
       text: "hello",
       marks: ["strong"],
@@ -82,10 +85,12 @@ Deno.test("renders native semantic elements without classes or styles", () => {
 
 Deno.test("renders heading level and list order", () => {
   const host = render({
+    path: "0",
     role: "heading",
     level: 3,
     range: { from: 0, to: 4 },
     children: [{
+      path: "0/0",
       role: "text",
       text: "Title",
       range: { from: 1, to: 4 },
@@ -99,9 +104,11 @@ Deno.test("renders heading level and list order", () => {
 
 Deno.test("drops unsafe URL schemes", () => {
   const host = render({
+    path: "0",
     role: "paragraph",
     range: { from: 0, to: 4 },
     children: [{
+      path: "0/0",
       role: "text",
       text: "bad",
       marks: ["link"],
@@ -117,9 +124,11 @@ Deno.test("drops unsafe URL schemes", () => {
 
 Deno.test("renders links and images with accessible attributes", () => {
   const host = render({
+    path: "0",
     role: "paragraph",
     range: { from: 0, to: 4 },
     children: [{
+      path: "0/0",
       role: "text",
       text: "site",
       marks: ["link"],

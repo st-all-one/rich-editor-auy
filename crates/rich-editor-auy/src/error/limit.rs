@@ -47,6 +47,27 @@ pub enum LimitError {
         /// Allowed value.
         max: u32,
     },
+    /// A node has too many attributes.
+    Attrs {
+        /// Observed value.
+        actual: u32,
+        /// Allowed value.
+        max: u32,
+    },
+    /// A mark has too many attributes.
+    MarkAttrs {
+        /// Observed value.
+        actual: u32,
+        /// Allowed value.
+        max: u32,
+    },
+    /// A text block has too many runs.
+    Runs {
+        /// Observed value.
+        actual: u32,
+        /// Allowed value.
+        max: u32,
+    },
 }
 
 impl fmt::Display for LimitError {
@@ -69,6 +90,15 @@ impl fmt::Display for LimitError {
             }
             Self::RunBytes { actual, max } => {
                 write!(formatter, "run limit exceeded: {actual} > {max}")
+            }
+            Self::Attrs { actual, max } => {
+                write!(formatter, "attribute count exceeded: {actual} > {max}")
+            }
+            Self::MarkAttrs { actual, max } => {
+                write!(formatter, "mark attribute count exceeded: {actual} > {max}")
+            }
+            Self::Runs { actual, max } => {
+                write!(formatter, "run count exceeded: {actual} > {max}")
             }
         }
     }

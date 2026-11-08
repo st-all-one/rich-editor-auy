@@ -50,6 +50,7 @@ impl A11yTree {
 fn write_node(node: &A11yNode, schema: &Schema, out: &mut impl Write) -> fmt::Result {
     out.write_str("{\"role\":")?;
     write_string(node.role.name(), out)?;
+    write_str_field(out, "path", Some(node.path.as_str()))?;
     write_str_field(out, "id", node.id.as_ref().map(NodeId::as_str))?;
     write_str_field(out, "name", node.name.as_deref())?;
     write_str_field(out, "description", node.description.as_deref())?;

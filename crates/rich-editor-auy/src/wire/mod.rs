@@ -3,6 +3,7 @@
 mod attrs;
 mod envelope;
 pub(crate) mod json;
+mod json_escape;
 mod json_hex;
 pub(crate) mod json_parser;
 mod options;

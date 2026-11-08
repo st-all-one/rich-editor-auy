@@ -26,11 +26,10 @@ impl Doc {
         let mut ids = BTreeSet::new();
         let mut heading = None;
         validate_root(schema, &tree, &mut errors, &mut warnings);
-        for (index, child) in tree.root.children.iter().enumerate() {
-            let path = DocPath::root().child(u32::try_from(index).unwrap_or(u32::MAX));
+        for child in &tree.root.children {
             validate_node(
                 child,
-                &path,
+                &child.path,
                 &mut ids,
                 &mut heading,
                 &mut errors,
@@ -205,9 +204,8 @@ fn validate_node(
         }
         _ => {}
     }
-    for (index, child) in node.children.iter().enumerate() {
-        let child_path = path.child(u32::try_from(index).unwrap_or(u32::MAX));
-        validate_node(child, &child_path, ids, heading, errors, warnings);
+    for child in &node.children {
+        validate_node(child, &child.path, ids, heading, errors, warnings);
     }
 }
 

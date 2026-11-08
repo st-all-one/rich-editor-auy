@@ -14,7 +14,9 @@ use crate::pos::{Pos, Range, Size};
 
 use super::attrs::Attrs;
 use super::block::Block;
-use super::ids::{NodeId, RefTarget};
+use super::limits::check_attr_limits;
+use super::limits::check_block_limits;
+use super::records::{Anchor, Reference};
 
 /// A closed fragment of blocks in document order.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -95,10 +97,12 @@ impl Doc {
         let mut size = 0_u32;
         let mut count = 0_u32;
         for block in &blocks {
+            check_block_limits(block, limits)?;
             size = size.saturating_add(block.size().0);
             count = count.saturating_add(1);
             count = count.saturating_add(super::measure::count_descendants(block));
         }
+        check_attr_limits(&attrs, limits)?;
         if size > limits.max_doc_bytes {
             return Err(LimitError::DocBytes {
                 actual: u64::from(size),
@@ -133,6 +137,57 @@ impl Doc {
     /// Returns a limit error when the document exceeds defaults.
     pub fn from_blocks(attrs: Attrs, blocks: Vec<Arc<Block>>) -> Result<Self, LimitError> {
         Self::new(attrs, blocks, &crate::Limits::default())
+    }
+
+    /// Creates a snapshot with one top-level block replaced.
+    ///
+    /// The caller guarantees that the replacement preserves node count; text edits and attribute
+    /// updates do not add or remove structural nodes. Only the replacement block is rechecked
+    /// against limits, so the hot path avoids rescanning an unchanged document.
+    pub(crate) fn replacing_block(
+        &self,
+        index: usize,
+        block: Block,
+        limits: &crate::Limits,
+    ) -> Result<Self, LimitError> {
+        check_block_limits(&block, limits)?;
+        let block = Arc::new(block);
+        let old = self.0.blocks.get(index).ok_or_else(|| LimitError::Nodes {
+            actual: u32::try_from(index).unwrap_or(u32::MAX),
+            max: u32::try_from(self.0.blocks.len()).unwrap_or(u32::MAX),
+        })?;
+        let mut blocks = self.0.blocks.to_vec();
+        let Some(slot) = blocks.get_mut(index) else {
+            return Err(LimitError::Nodes {
+                actual: u32::try_from(index).unwrap_or(u32::MAX),
+                max: u32::try_from(self.0.blocks.len()).unwrap_or(u32::MAX),
+            });
+        };
+        *slot = Arc::clone(&block);
+        let size = self
+            .0
+            .size
+            .0
+            .saturating_sub(old.size().0)
+            .saturating_add(block.size().0);
+        if size > limits.max_doc_bytes {
+            return Err(LimitError::DocBytes {
+                actual: u64::from(size),
+                max: limits.max_doc_bytes,
+            });
+        }
+        let mut starts = self.0.starts.to_vec();
+        for start in starts.iter_mut().skip(index.saturating_add(1)) {
+            *start = start
+                .saturating_add(block.size().0)
+                .saturating_sub(old.size().0);
+        }
+        Ok(Self(Arc::new(DocInner {
+            attrs: self.0.attrs.clone(),
+            blocks: blocks.into_boxed_slice(),
+            starts: starts.into_boxed_slice(),
+            size: Size(size),
+        })))
     }
 
     /// Returns document attributes.
@@ -228,22 +283,4 @@ impl Doc {
         }
         references
     }
-}
-
-/// A node anchor and its absolute range.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Anchor {
-    /// Stable identifier.
-    pub id: NodeId,
-    /// Absolute range.
-    pub range: Range,
-}
-
-/// A cross-publication reference and its source range.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Reference {
-    /// Source range.
-    pub source: Range,
-    /// Target.
-    pub target: RefTarget,
 }

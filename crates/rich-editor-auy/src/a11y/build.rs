@@ -63,6 +63,7 @@ pub(super) fn block_nodes(
     let colspan = attr_u16(schema, block.kind(), block.attrs(), "colspan");
     let rowspan = attr_u16(schema, block.kind(), block.attrs(), "rowspan");
     Vec::from([A11yNode {
+        path: path.clone(),
         id: block.id(),
         role: a11y.role,
         name,
@@ -120,7 +121,8 @@ fn child_nodes(
         BlockContent::Text(text) => {
             let mut nodes = Vec::new();
             let mut offset = start.0.saturating_add(1);
-            for item in text.items() {
+            for (index, item) in text.items().iter().enumerate() {
+                let item_path = path.child(u32::try_from(index).unwrap_or(u32::MAX));
                 let size = match item {
                     InlineItem::Text(run) => u32::try_from(run.text.len()).unwrap_or(u32::MAX),
                     InlineItem::Atom(_) => 1,
@@ -128,6 +130,7 @@ fn child_nodes(
                 let range = Range::new(Pos(offset), Pos(offset.saturating_add(size)));
                 match item {
                     InlineItem::Text(run) => nodes.push(A11yNode {
+                        path: item_path.clone(),
                         id: None,
                         role: super::marks::mark_role(schema, &run.marks),
                         name: Some(Box::from(run.text.as_str())),
@@ -155,6 +158,7 @@ fn child_nodes(
                         {
                             let name = name_for(atom_spec, a11y.name, &atom.attrs, "");
                             nodes.push(A11yNode {
+                                path: item_path.clone(),
                                 id: None,
                                 role: a11y.role,
                                 name: name.clone(),

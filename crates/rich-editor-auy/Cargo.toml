@@ -20,6 +20,7 @@ visits = []
 blake3.workspace = true
 
 [dev-dependencies]
+rich-editor-auy-macros = { path = "../rich-editor-auy-macros" }
 
 [lints]
 workspace = true

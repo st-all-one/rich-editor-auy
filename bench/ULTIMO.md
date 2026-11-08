@@ -8,17 +8,17 @@
 
 | Medida | Resultado | Alvo (`plan/05`) | Estado |
 |---|---:|---:|---|
-| `apply` + inserir 1 char (S2) | 170,1 µs | ≤ 10 µs | **acima** |
-| `apply` + inserir 1 char (S1) | 2,44 µs | ≤ 100 ns | **acima** |
-| `to_json_string` | 2,94 ms | ≤ 6 ms | ok |
-| `from_json` (S2) | 38,99 ms | ≤ 15 ms | **acima** |
-| `from_json` (S1) | 357,5 µs | ≤ 15 ms (S2) | informativo |
-| `a11y_tree` | 10,86 ms | orçamento de render | informativo |
-| `validate_a11y` | 14,58 ms | ≤ 10 ms | **acima** |
+| `apply` + inserir 1 char (S2) | 107,5 µs | ≤ 10 µs | **acima** |
+| `apply` + inserir 1 char (S1) | 2,04 µs | ≤ 100 ns | **acima** |
+| `to_json_string` | 2,90 ms | ≤ 6 ms | ok |
+| `from_json` (S2) | 35,57 ms | ≤ 15 ms | **acima** |
+| `from_json` (S1) | 345,8 µs | ≤ 15 ms (S2) | informativo |
+| `a11y_tree` | 11,30 ms | orçamento de render | informativo |
+| `validate_a11y` | 11,41 ms | ≤ 10 ms | **acima** |
 
 ## Artefato WASM
 
-`scripts/build_wasm.sh` gerou `rich_editor_auy_wasm_bg.wasm` com 317,59 KB no pacote JSR. `wasm-opt`
+`scripts/build_wasm.sh` gerou `rich_editor_auy_wasm_bg.wasm` com 322,0 KB no pacote JSR. `wasm-opt`
 não estava instalado; o valor é o artefato sem otimização adicional. O checksum BLAKE3 não foi
 gerado porque `b3sum` também não está instalado.
 

@@ -16,7 +16,7 @@ use crate::model::{Attr, AttrValue, Attrs, DocId, Mark, MarkSet, NodeId, RefTarg
 use crate::pos::{Pos, Range};
 use crate::schema::{AttrSpec, AttrType, Schema};
 
-use super::json::JsonValue;
+use super::json::{JsonKind, JsonValue};
 
 pub(crate) fn decode_attrs(
     value: Option<&JsonValue>,
@@ -26,10 +26,10 @@ pub(crate) fn decode_attrs(
     let Some(value) = value else {
         return Ok(Attrs::empty());
     };
-    let JsonValue::Object(members) = value else {
+    let JsonKind::Object(members) = value.kind() else {
         return Err(ParseError {
             code: Box::from("attrs_not_object"),
-            offset: 0,
+            offset: value.start(),
             path: Box::from(path),
         });
     };
@@ -38,15 +38,18 @@ pub(crate) fn decode_attrs(
         let Some(spec) = specs.iter().find(|spec| *spec.name == **name) else {
             return Err(ParseError {
                 code: Box::from("unknown_attr"),
-                offset: 0,
+                offset: value.start(),
                 path: Box::from(path),
             });
         };
-        let decoded = decode_value(value, &spec.kind)?;
+        let decoded = decode_value(value, &spec.kind).map_err(|error| ParseError {
+            offset: value.start(),
+            ..error
+        })?;
         if !Schema::value_matches(&spec.kind, &decoded) {
             return Err(ParseError {
                 code: Box::from("attr_type"),
-                offset: 0,
+                offset: value.start(),
                 path: Box::from(path),
             });
         }
@@ -59,14 +62,14 @@ pub(crate) fn decode_attrs(
         if spec.required && spec.default.is_none() && !attrs.iter().any(|attr| attr.id == spec.id) {
             return Err(ParseError {
                 code: Box::from("required_attr"),
-                offset: 0,
+                offset: value.start(),
                 path: Box::from(path),
             });
         }
     }
     Attrs::new(attrs).ok_or_else(|| ParseError {
         code: Box::from("duplicate_attr"),
-        offset: 0,
+        offset: value.start(),
         path: Box::from(path),
     })
 }
@@ -81,8 +84,8 @@ fn decode_value(value: &JsonValue, kind: &AttrType) -> Result<AttrValue, ParseEr
             .as_i64()
             .map(AttrValue::Int)
             .ok_or_else(|| ParseError::new("expected_int", 0)),
-        AttrType::Bool => match value {
-            JsonValue::Bool(flag) => Ok(AttrValue::Bool(*flag)),
+        AttrType::Bool => match value.kind() {
+            JsonKind::Bool(flag) => Ok(AttrValue::Bool(*flag)),
             _ => Err(ParseError::new("expected_bool", 0)),
         },
         AttrType::Ref => decode_ref(value).map(AttrValue::Ref),
@@ -91,9 +94,9 @@ fn decode_value(value: &JsonValue, kind: &AttrType) -> Result<AttrValue, ParseEr
 }
 
 fn decode_ref(value: &JsonValue) -> Result<RefTarget, ParseError> {
-    let Some(JsonValue::Object(_)) = Some(value) else {
+    if !matches!(value.kind(), JsonKind::Object(_)) {
         return Err(ParseError::new("expected_ref", 0));
-    };
+    }
     let doc = value
         .get("doc")
         .and_then(JsonValue::as_str)
@@ -143,19 +146,19 @@ fn decode_ref(value: &JsonValue) -> Result<RefTarget, ParseError> {
 }
 
 fn decode_any(value: &JsonValue) -> Result<AttrValue, ParseError> {
-    match value {
-        JsonValue::Null => Ok(AttrValue::Null),
-        JsonValue::Bool(flag) => Ok(AttrValue::Bool(*flag)),
-        JsonValue::Int(number) => Ok(AttrValue::Int(*number)),
-        JsonValue::Str(text) => Ok(AttrValue::Str(text.clone())),
-        JsonValue::Array(values) => {
+    match value.kind() {
+        JsonKind::Null => Ok(AttrValue::Null),
+        JsonKind::Bool(flag) => Ok(AttrValue::Bool(*flag)),
+        JsonKind::Int(number) => Ok(AttrValue::Int(*number)),
+        JsonKind::Str(text) => Ok(AttrValue::Str(text.clone())),
+        JsonKind::Array(values) => {
             let mut out = Vec::new();
             for value in values {
                 out.push(decode_any(value)?);
             }
             Ok(AttrValue::Array(out.into_boxed_slice()))
         }
-        JsonValue::Object(_) => decode_ref(value).map(AttrValue::Ref),
+        JsonKind::Object(_) => decode_ref(value).map(AttrValue::Ref),
     }
 }
 
@@ -168,33 +171,37 @@ pub(crate) fn decode_marks(
     };
     let values = value
         .as_array()
-        .ok_or_else(|| ParseError::new("marks_not_array", 0))?;
+        .ok_or_else(|| ParseError::new("marks_not_array", value.start()))?;
     let mut marks = MarkSet::empty();
     for value in values {
         let name = value
             .get("type")
             .and_then(JsonValue::as_str)
-            .ok_or_else(|| ParseError::new("missing_mark_type", 0))?;
+            .ok_or_else(|| ParseError::new("missing_mark_type", value.start()))?;
         let id = schema
             .mark_id(name)
-            .ok_or_else(|| ParseError::new("unknown_mark", 0))?;
+            .ok_or_else(|| ParseError::new("unknown_mark", value.start()))?;
         let specs = schema.mark(id).map_or(&[][..], |spec| &spec.attrs);
         let mut decoded = Vec::new();
         for spec in specs {
             if let Some(raw) = value.get(&spec.name) {
-                let target = decode_value(raw, &spec.kind)?;
+                let target = decode_value(raw, &spec.kind).map_err(|error| ParseError {
+                    offset: raw.start(),
+                    ..error
+                })?;
                 if !Schema::value_matches(&spec.kind, &target) {
-                    return Err(ParseError::new("mark_attr_type", 0));
+                    return Err(ParseError::new("mark_attr_type", raw.start()));
                 }
                 decoded.push(Attr {
                     id: spec.id,
                     value: target,
                 });
             } else if spec.required && spec.default.is_none() {
-                return Err(ParseError::new("required_mark_attr", 0));
+                return Err(ParseError::new("required_mark_attr", value.start()));
             }
         }
-        let attrs = Attrs::new(decoded).ok_or_else(|| ParseError::new("duplicate_mark_attr", 0))?;
+        let attrs = Attrs::new(decoded)
+            .ok_or_else(|| ParseError::new("duplicate_mark_attr", value.start()))?;
         marks = marks.with_mark(Mark { id, attrs });
     }
     Ok(marks)
