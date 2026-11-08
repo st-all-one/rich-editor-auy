@@ -1,0 +1,16 @@
+{
+  "workspace": ["./packages/core", "./packages/schema", "./packages/dom"],
+  "tasks": {
+    "check": "deno fmt --check && deno lint && deno check . && deno test --allow-read",
+    "publish:dry": "deno publish --dry-run --allow-dirty"
+  },
+  "compilerOptions": {
+    "lib": ["dom", "dom.iterable", "deno.ns"]
+  },
+  "fmt": {
+    "exclude": ["packages/core/wasm"]
+  },
+  "lint": {
+    "exclude": ["packages/core/wasm"]
+  }
+}

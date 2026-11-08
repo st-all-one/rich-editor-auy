@@ -1,0 +1,32 @@
+[package]
+name = "rich-editor-auy-fuzz"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+rich-editor-auy = { path = "../crates/rich-editor-auy" }
+libfuzzer-sys = "0.4"
+
+[[bin]]
+name = "json_parse"
+path = "fuzz_targets/json_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "a11y_tree"
+path = "fuzz_targets/a11y_tree.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "apply_step"
+path = "fuzz_targets/apply_step.rs"
+test = false
+doc = false
+bench = false

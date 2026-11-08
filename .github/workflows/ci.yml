@@ -1,0 +1,121 @@
+name: ci
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace --locked
+      - run: cargo test -p rich-editor-auy --locked --test a11y
+      - run: cargo test -p rich-editor-auy --features visits --locked --test visits
+      - run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked
+      - run: ./scripts/check_file_length.sh
+      - run: python3 scripts/check_links.py
+      - run: ./scripts/check_zero_style.sh
+      - run: cargo package -p rich-editor-auy --locked --allow-dirty
+
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.92"
+      - uses: Swatinem/rust-cache@v2
+      - run: RUSTUP_TOOLCHAIN=1.92 cargo build --workspace --locked
+      - run: RUSTUP_TOOLCHAIN=1.92 cargo test --workspace --lib --locked
+
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-deny cargo-machete cargo-audit --locked
+      - run: cargo deny check
+      - run: cargo machete
+      - run: cargo audit
+
+  miri:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - run: cargo miri setup
+      - run: cargo miri test -p rich-editor-auy --test miri_smoke
+
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
+      - run: ./scripts/build_wasm.sh
+      - run: test -s packages/ts/packages/core/wasm/rich_editor_auy_wasm_bg.wasm
+
+  js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: cd packages/ts && deno task check && deno task publish:dry
+      - run: deno check examples/ts/main.ts
+
+  php:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          tools: composer
+      - run: cd packages/php && composer install --no-interaction --prefer-dist
+      - run: cd packages/php && composer validate --strict && composer audit
+      - run: cd packages/php && vendor/bin/phpunit
+      - run: cd packages/php && vendor/bin/phpstan analyse
+
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99
+      - uses: Swatinem/rust-cache@v2
+      - run: cd bench && cargo bench --bench hot_path
+
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo install cargo-fuzz --locked
+      - run: cd fuzz && cargo +nightly fuzz run json_parse -- -max_total_time=30
+      - run: cd fuzz && cargo +nightly fuzz run a11y_tree -- -max_total_time=30
+      - run: cd fuzz && cargo +nightly fuzz run apply_step -- -max_total_time=30

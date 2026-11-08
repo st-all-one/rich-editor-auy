@@ -1,0 +1,21 @@
+[package]
+name = "rich-editor-auy-macros"
+description = "Compile-time schema front-end for rich-editor-auy"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "../../README.md"
+keywords = ["editor", "schema", "macro", "proc-macro"]
+categories = ["development-tools::procedural-macro-helpers"]
+include = ["src/**/*", "Cargo.toml", "README.md", "LICENSE-MIT", "LICENSE-APACHE"]
+
+[lib]
+proc-macro = true
+
+
+[lints]
+workspace = true

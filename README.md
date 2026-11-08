@@ -10,10 +10,11 @@ no UI opinions.
 
 </div>
 
-> **Status:** planning dossier. There is no Cargo workspace or code yet. This repository currently
-> contains the design record that the implementation will follow: vision, reference analysis,
-> open/closed decisions, architecture, performance budget, API contract, rigor policy and roadmap.
-> The planning documents are written in Portuguese; the public API and rustdoc will be in English.
+> **Status:** MVP implementation (F0–F3.5 materialized; F4 measurement in progress with open items). The Rust core,
+> WASM artifact, Deno/JSR packages, DOM adapter, Composer package and CLI are present. `make check`
+> is the local gate; measured performance deviations and open design items live in
+> [`DIVERGENCES.md`](DIVERGENCES.md). The planning documents are written in Portuguese; the public
+> API and rustdoc are in English.
 
 **AUY** stands for **accessibility + universality**: universal accessibility is a core invariant,
 not an adapter option. The core projects a deterministic semantic tree; the adapter maps it to
@@ -98,9 +99,20 @@ crates.io crate, a WASM artifact, a Composer package and a Deno 2.0/JSR workspac
   explicitly transfers rendering responsibility.
 
 ```ts
-const state = EditorState.fromEnvelope(basicSchema(), savedBytes);
-const editor = mount(host, { state, onChange: (c) => save(c.toJSON()) });
+import { EditorState, init } from "@rich-editor-auy/core";
+import { mount } from "@rich-editor-auy/dom";
+
+await init();
+const state = EditorState.fromJSON(savedJSON);
+const editor = mount(host, {
+  state,
+  label: "Documento",
+  onInput: (_event, current) => save(current.doc().toJSON()),
+});
 ```
+
+`onInput` is an intent boundary: the adapter does not reimplement the edit algebra. The host
+applies core commands and calls `editor.dispatch(nextState)`.
 
 No CSS import. The host remains yours.
 
@@ -117,6 +129,7 @@ No CSS import. The host remains yours.
 | [`plan/06_api-e-integracao.md`](plan/06_api-e-integracao.md) | What does a UI receive and what must it do? |
 | [`plan/07_rigor.md`](plan/07_rigor.md) | Which toolchain, lints, CI and tests are mandatory? |
 | [`plan/08_roadmap.md`](plan/08_roadmap.md) | In what order, with which acceptance and stop criteria? |
+| [`DIVERGENCES.md`](DIVERGENCES.md) | Where does the implementation differ from the plan, and why? |
 | [`plan/09_frontend-e-referencias.md`](plan/09_frontend-e-referencias.md) | How do PHP/TS integrate without CSS, and how do cross-publication references work? |
 | [`plan/10_acessibilidade.md`](plan/10_acessibilidade.md) | What does AUY mean, which a11y contract is core, and how is it tested? |
 | [`AGENTS.md`](AGENTS.md) | How does an agent/contributor operate in this repository? |

@@ -1,0 +1,97 @@
+msrv = "1.92"
+
+accept-comment-above-attributes = false
+accept-comment-above-statement = false
+
+allow-expect-in-consts = false
+allow-expect-in-tests = false
+allow-unwrap-in-consts = false
+allow-unwrap-in-tests = false
+allow-panic-in-tests = false
+allow-unwrap-types = []
+
+allow-dbg-in-tests = false
+allow-print-in-tests = false
+allow-useless-vec-in-tests = false
+allow-indexing-slicing-in-tests = false
+allow-large-stack-frames-in-tests = true
+
+allow-mixed-uninlined-format-args = false
+allow-one-hash-in-raw-strings = false
+unreadable-literal-lint-fractions = true
+upper-case-acronyms-aggressive = true
+enforce-iter-loop-reborrow = true
+lint-commented-code = true
+module-items-ordered-within-groupings = "all"
+warn-on-all-wildcard-imports = true
+allowed-wildcard-imports = []
+
+cognitive-complexity-threshold = 15
+type-complexity-threshold = 150
+too-many-lines-threshold = 60
+too-many-arguments-threshold = 5
+excessive-nesting-threshold = 3
+max-trait-bounds = 3
+max-suggested-slice-pattern-length = 3
+single-char-binding-names-threshold = 2
+min-ident-chars-threshold = 2
+allowed-idents-below-min-chars = [
+    "i", "j", "x", "y", "z", "n", "id", "ok", "err", "pos", "len", "..",
+]
+
+max-fn-params-bools = 0
+max-struct-bools = 1
+enum-variant-size-threshold = 128
+enum-variant-name-threshold = 3
+struct-field-name-threshold = 3
+large-error-threshold = 128
+unnecessary-box-size = 128
+pass-by-value-size-limit = 128
+array-size-threshold = 4096
+stack-size-threshold = 65536
+future-size-threshold = 8192
+max-include-file-size = 262144
+vec-box-size-threshold = 4096
+too-large-for-stack = 200
+
+avoid-breaking-exported-api = false
+check-incompatible-msrv-in-tests = true
+check-private-items = true
+missing-docs-allow-unused = false
+missing-docs-in-crate-items = false
+inherent-impl-lint-scope = "crate"
+recursive-self-in-type-definitions = true
+enable-raw-pointer-heuristic-for-send = true
+pub-underscore-fields-behavior = "PubliclyExported"
+
+allowed-scripts = ["Latin"]
+
+disallowed-names = ["foo", "baz", "quux", "tmp", "thing", "stuff", "misc", ".."]
+
+disallowed-types = [
+  { path = "std::rc::Rc", reason = "not Send + Sync; use Arc" },
+  { path = "std::rc::Weak", reason = "not Send + Sync" },
+  { path = "std::cell::RefCell", reason = "runtime interior mutability" },
+  { path = "std::cell::Cell", reason = "shared mutable state" },
+  { path = "std::collections::LinkedList", reason = "cache-hostile" },
+  { path = "std::collections::HashMap", reason = "non-deterministic iteration; use BTreeMap" },
+  { path = "std::collections::HashSet", reason = "non-deterministic iteration; use BTreeSet" },
+]
+
+disallowed-methods = [
+  { path = "std::env::var", reason = "non-deterministic; pass data explicitly" },
+  { path = "std::env::vars", reason = "non-deterministic; pass data explicitly" },
+  { path = "std::time::SystemTime::now", reason = "non-deterministic; time is input" },
+  { path = "std::time::Instant::now", reason = "non-deterministic; time is input" },
+  { path = "std::process::exit", reason = "propagate Result" },
+  { path = "std::mem::transmute", reason = "potential UB" },
+  { path = "std::mem::forget", reason = "leak; use RAII" },
+]
+
+disallowed-macros = [
+  { path = "std::dbg", reason = "remove before commit" },
+  { path = "std::todo", reason = "unfinished" },
+  { path = "std::unimplemented", reason = "unfinished" },
+  { path = "std::unreachable", reason = "prove impossibility without panic" },
+  { path = "std::panic", reason = "propagate Result" },
+]

@@ -1,0 +1,16 @@
+{
+  "name": "@rich-editor-auy/core",
+  "version": "0.1.0",
+  "exports": { ".": "./mod.ts" },
+  "publish": {
+    "include": [
+      "mod.ts",
+      "wasm/*.wasm",
+      "wasm/*.js",
+      "wasm/*.d.ts",
+      "wasm/*.blake3",
+      "LICENSE"
+    ],
+    "exclude": ["**/*_test.ts"]
+  }
+}

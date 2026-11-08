@@ -9,9 +9,19 @@
 
 ## 0. Estado atual
 
-O repositório está na fase de **dossiê** (`plan/`). A fundação `F0` ainda não foi materializada:
-não há `Cargo.toml`, crates, `Makefile` nem CI. Quando F0 existir, este guia passa a valer como
-está; até lá, ele descreve o contrato que a fundação deve cumprir.
+O MVP está materializado: workspace Rust (`core`, `macros`, `wasm`, `testkit`, `cli`), modelo,
+schema, posições, steps, transações, histórico, comandos, input, a11y, wire, artefato WASM, pacotes
+Deno/JSR, adaptador DOM, pacote Composer e CLI. `make check` (fmt, clippy, testes, visits, doc,
+a11y, file-length, links, zero-style, package) é o gate local; `make check-ecosystem` cobre Deno e
+PHP quando as ferramentas existem.
+
+F0–F3.5 estão materializados; lacunas conhecidas estão em `DIVERGENCES.md`. F4 tem benchmarks `criterion`, testes de alocação/memória e um gate de
+consultas; `iai-callgrind`, baseline de instruções, fuzz executado e calibração de desempenho ainda
+são pendências registradas em [`DIVERGENCES.md`](DIVERGENCES.md). PHP não foi executado neste host
+por ausência de `php`/`composer`; o CI tem o job correspondente.
+
+Qualquer mudança de comportamento ou desvio do plano entra em `DIVERGENCES.md` com motivo,
+impacto e próximo passo. Este guia descreve o contrato permanente.
 
 ## 1. Missão e fronteira
 
@@ -82,10 +92,10 @@ Não misture idiomas no mesmo artefato. Um comentário em português no `src/` �
     ordem e ranges; `Doc::a11y_tree` + `validate_a11y` entram no `make check`; não existe flag
     “a11y opcional” nem release sem a suíte verde.
 
-## 4. Mapa do repositório (planejado)
+## 4. Mapa do repositório
 
 ```text
-crates/rich-editor-auy/          # core: model, schema, pos, step, transform, state, history,
+crates/rich-editor-auy/          # core implementado: model, schema, pos, step, state, history,
                                  # command, input, wire, math, motion, a11y, error
 crates/rich-editor-auy-macros/   # schema! (proc-macro opcional)
 crates/rich-editor-auy-wasm/     # wasm-bindgen + artefato WASM (não é o core)
@@ -115,7 +125,8 @@ Onde mexer:
 | schema, expressões, marcas, attrs | `schema/` |
 | posições, ranges, UTF-16/grapheme | `pos/`, `motion/` |
 | steps, mapping, invert/rebase | `step/` |
-| replace/split/join/wrap/lift | `transform/` |
+| replace/split/join | `step/`, `state/` |
+| wrap/lift | pós-MVP; não implementado |
 | estado, transação, seleção, change set | `state/` |
 | undo/redo, grupos | `history/` |
 | comandos embutidos | `command/` |

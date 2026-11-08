@@ -1,0 +1,8 @@
+{
+  "name": "@rich-editor-auy/dom",
+  "version": "0.1.0",
+  "exports": { ".": "./mod.ts" },
+  "publish": { "include": ["mod.ts", "render.ts", "LICENSE"] },
+  "imports": { "@rich-editor-auy/core": "jsr:@rich-editor-auy/core@^0.1.0" },
+  "compilerOptions": { "lib": ["dom", "dom.iterable", "deno.ns"] }
+}

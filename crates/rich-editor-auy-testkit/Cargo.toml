@@ -1,0 +1,17 @@
+[package]
+name = "rich-editor-auy-testkit"
+description = "Test helpers for rich-editor-auy"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+rich-editor-auy = { path = "../rich-editor-auy" }
+
+[lints]
+workspace = true

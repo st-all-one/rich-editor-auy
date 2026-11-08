@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <title>rich-editor-auy host</title>
+    <style>
+      .editor { max-width: 60ch; padding: 1rem; border: 1px solid #ccc; }
+    </style>
+  </head>
+  <body>
+    <main id="editor" class="editor" aria-label="Documento"></main>
+    <script type="module">
+      import { EditorState, init } from "../../packages/ts/packages/core/mod.ts";
+      import { mount } from "../../packages/ts/packages/dom/mod.ts";
+      await init();
+      const state = EditorState.fromJSON('{"type":"doc","content":[{"type":"paragraph","content":[]}]}');
+      const host = document.querySelector("#editor");
+      if (host !== null) mount(host, { state, label: "Documento" });
+    </script>
+  </body>
+</html>
