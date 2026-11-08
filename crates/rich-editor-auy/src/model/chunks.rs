@@ -19,6 +19,7 @@ use crate::error::LimitError;
 use crate::pos::{Pos, Range, Size};
 
 use super::block::Block;
+use super::block_seq::{BlockSeq, TopBlockIter};
 use super::limits::check_block_limits;
 
 /// Number of top-level blocks in one chunk.
@@ -51,6 +52,10 @@ impl Chunk {
         self.blocks.len()
     }
 
+    pub(crate) fn iter(&self) -> slice::Iter<'_, Arc<Block>> {
+        self.blocks.iter()
+    }
+
     fn get(&self, index: usize) -> Option<&Arc<Block>> {
         self.blocks.get(index)
     }
@@ -69,6 +74,24 @@ impl Chunk {
             .saturating_sub(1);
         let block = self.blocks.get(index)?;
         Some((index, block))
+    }
+
+    fn replacing(&self, local: usize, block: Block) -> Option<Self> {
+        let old = self.blocks.get(local)?;
+        let old_size = old.size().0;
+        let new_size = block.size().0;
+        let mut blocks = self.blocks.to_vec();
+        let slot = blocks.get_mut(local)?;
+        *slot = Arc::new(block);
+        let mut starts = self.starts.to_vec();
+        for start in starts.iter_mut().skip(local.saturating_add(1)) {
+            *start = start.saturating_add(new_size).saturating_sub(old_size);
+        }
+        Some(Self {
+            blocks: blocks.into_boxed_slice(),
+            starts: starts.into_boxed_slice(),
+            size: self.size.saturating_sub(old_size).saturating_add(new_size),
+        })
     }
 }
 
@@ -158,10 +181,7 @@ impl Chunks {
     }
 
     pub(crate) fn iter(&self) -> TopBlockIter<'_> {
-        TopBlockIter {
-            chunks: self.directory.iter(),
-            current: [].iter(),
-        }
+        TopBlockIter::new(self.directory.iter())
     }
 
     pub(crate) fn to_vec(&self) -> Vec<Arc<Block>> {
@@ -185,15 +205,15 @@ impl Chunks {
                 max: u32::try_from(self.count).unwrap_or(u32::MAX),
             })?;
         let old_size = old_chunk.size;
-        let mut blocks = old_chunk.blocks.to_vec();
-        let Some(slot) = blocks.get_mut(local) else {
-            return Err(LimitError::Nodes {
-                actual: u32::try_from(index).unwrap_or(u32::MAX),
-                max: u32::try_from(self.count).unwrap_or(u32::MAX),
-            });
-        };
-        *slot = Arc::new(block);
-        let new_chunk = Arc::new(Chunk::new(blocks));
+        let new_chunk =
+            Arc::new(
+                old_chunk
+                    .replacing(local, block)
+                    .ok_or_else(|| LimitError::Nodes {
+                        actual: u32::try_from(index).unwrap_or(u32::MAX),
+                        max: u32::try_from(self.count).unwrap_or(u32::MAX),
+                    })?,
+            );
         let new_size = new_chunk.size;
         let mut chunks = self.directory.to_vec();
         let Some(slot) = chunks.get_mut(chunk_index) else {
@@ -227,66 +247,8 @@ impl Chunks {
     }
 }
 
-/// Borrowed view over top-level blocks.
-#[derive(Clone, Copy, Debug)]
-pub struct BlockSeq<'a> {
-    chunks: &'a Chunks,
-}
-
-impl<'a> BlockSeq<'a> {
-    /// Returns the number of top-level blocks.
-    #[must_use]
-    pub fn len(self) -> usize {
-        self.chunks.len()
-    }
-
-    /// Returns whether the document has no top-level blocks.
-    #[must_use]
-    pub fn is_empty(self) -> bool {
-        self.chunks.is_empty()
-    }
-
-    /// Returns a block by index.
-    #[must_use]
-    pub fn get(self, index: usize) -> Option<&'a Arc<Block>> {
-        self.chunks.get(index)
-    }
-
-    /// Iterates blocks in document order.
-    pub fn iter(self) -> TopBlockIter<'a> {
-        self.chunks.iter()
-    }
-
-    /// Copies block handles into a vector.
-    #[must_use]
-    pub fn to_vec(self) -> Vec<Arc<Block>> {
-        self.chunks.to_vec()
-    }
-}
-
-/// Iterator over the flattened chunk directory.
-#[derive(Clone, Debug)]
-pub struct TopBlockIter<'a> {
-    chunks: slice::Iter<'a, Arc<Chunk>>,
-    current: slice::Iter<'a, Arc<Block>>,
-}
-
-impl<'a> Iterator for TopBlockIter<'a> {
-    type Item = &'a Arc<Block>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            if let Some(block) = self.current.next() {
-                return Some(block);
-            }
-            let chunk = self.chunks.next()?;
-            self.current = chunk.blocks.iter();
-        }
-    }
-}
-
 impl Chunks {
     pub(crate) fn view(&self) -> BlockSeq<'_> {
-        BlockSeq { chunks: self }
+        BlockSeq::new(self)
     }
 }

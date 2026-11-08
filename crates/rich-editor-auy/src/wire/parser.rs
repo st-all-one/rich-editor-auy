@@ -27,6 +27,17 @@ pub fn from_json(input: &str, schema: &Schema, options: &ParseOptions) -> Result
     decode_doc(&value, schema, options)
 }
 
+/// Parses strict JSON syntax without decoding a document.
+///
+/// This is the raw parser path used by envelope preflight and by the Serde A/B benchmark.
+///
+/// # Errors
+///
+/// Returns a located error for malformed JSON, duplicate keys, floats, or exponents.
+pub fn check_json(input: &str, options: &ParseOptions) -> Result<(), ParseError> {
+    parse_json(input, options.limits.max_depth).map(|_value| ())
+}
+
 pub(super) fn decode_doc(
     value: &JsonValue,
     schema: &Schema,

@@ -40,7 +40,7 @@ recurso.
 | # | Área | Estado | Impacto | Próximo passo |
 |---|---|---|---|---|
 | A | `schema!` | Front-end real, mas cobre doc/nó/marca/content/group/marks/attrs básicos; sem acessores tipados e sem testes compile-fail | Extensões como `a11y` declarativa e `trybuild` ainda não têm contrato | Adicionar a11y declarativa, acessores e `trybuild`; documentar subconjunto |
-| B | `apply_owned` | Blocos agora em chunks de 128; `replacing_block` copia um chunk + diretório, não o documento inteiro | S2 ~3,16 µs (alvo 10 µs, atingido); S1 ~2,09 µs contra alvo de 0,1 µs e 35 alocações | Fast path flat para documentos pequenos e reduzir o diretório do chunk |
+| B | `apply_owned` | Blocos agora em chunks de 128; `replacing_block` copia um chunk + diretório, não o documento inteiro | S2 ~3,19 µs (alvo 10 µs, atingido); S1 ~2,05 µs contra alvo de 0,1 µs e 35 alocações | Fast path flat para documentos pequenos e reduzir o diretório do chunk |
 | C | Parser JSON | S2 ~34,8 ms contra alvo de 15 ms; surrogate pairs resolvidos; `JsonValue` carrega offset inicial, mas spans completos de campos ainda não | Parse acima do orçamento; offsets são do valor, não do token exato | Perfilar alocações e carregar intervalo completo por valor |
 | D | `validate_a11y` | S2 ~11,3 ms contra alvo de 10 ms | Validação acima do orçamento | Revisar alocações por nó/cachear árvore no adaptador |
 | E | `iai-callgrind`/baseline | Não instalado; `criterion` é informativo | Sem gate determinístico de instruções/regressão de 5% | Adicionar job com valgrind e `bench/baseline.json` |

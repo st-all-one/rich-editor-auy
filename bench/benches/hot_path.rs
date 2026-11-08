@@ -7,7 +7,7 @@ use rich_editor_auy::model::{Attrs, Block, Doc, InlineItem, MarkSet, Run, TextBl
 use rich_editor_auy::pos::Pos;
 use rich_editor_auy::schema::Schema;
 use rich_editor_auy::state::EditorState;
-use rich_editor_auy::wire::{ParseOptions, from_json};
+use rich_editor_auy::wire::{ParseOptions, check_json, from_json};
 
 fn document(blocks: usize, text_len: usize) -> Doc {
     let schema = Schema::basic().expect("basic schema");
@@ -85,5 +85,33 @@ fn bench_a11y(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_apply, bench_s1, bench_wire, bench_a11y);
+fn bench_serde(c: &mut Criterion) {
+    let schema = Schema::basic().expect("basic schema");
+    let doc = document(10_000, 100);
+    let json = doc.to_json_string(&schema);
+    let value: serde_json::Value = serde_json::from_str(&json).expect("serde parse");
+    c.bench_function("serde_json_parse_s2", |b| {
+        b.iter(|| black_box(serde_json::from_str::<serde_json::Value>(black_box(&json)).is_ok()));
+    });
+    c.bench_function("auy_json_parse_s2", |b| {
+        b.iter(|| {
+            black_box(check_json(black_box(&json), &ParseOptions::default()).is_ok());
+        });
+    });
+    c.bench_function("serde_json_serialize_s2", |b| {
+        b.iter(|| black_box(serde_json::to_string(black_box(&value)).ok()));
+    });
+    c.bench_function("auy_json_serialize_s2", |b| {
+        b.iter(|| black_box(doc.to_json_string(black_box(&schema))));
+    });
+}
+
+criterion_group!(
+    benches,
+    bench_apply,
+    bench_s1,
+    bench_wire,
+    bench_a11y,
+    bench_serde
+);
 criterion_main!(benches);

@@ -14,7 +14,8 @@ use crate::pos::{Pos, Range, Size};
 
 use super::attrs::Attrs;
 use super::block::Block;
-use super::chunks::{BlockSeq, Chunks};
+use super::block_seq::BlockSeq;
+use super::chunks::Chunks;
 use super::limits::check_attr_limits;
 use super::limits::check_block_limits;
 use super::records::{Anchor, Reference};

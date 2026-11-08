@@ -53,7 +53,7 @@ impl Transaction {
     reason = "explicit boundary and payload checks"
 )]
 fn join_parts(doc: &Doc, at: Pos) -> Result<(Pos, Pos, Block), StepError> {
-    let mut current = None;
+    let mut current: Option<usize> = None;
     for index in 0..doc.blocks().len() {
         let Some(range) = doc.block_range(u32::try_from(index).unwrap_or(u32::MAX)) else {
             continue;

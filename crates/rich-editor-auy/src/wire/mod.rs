@@ -12,6 +12,7 @@ mod writer;
 
 pub use envelope::Envelope;
 pub use options::ParseOptions;
+pub use parser::check_json;
 pub use parser::from_json;
 pub use writer::write_doc_into;
 pub(crate) use writer::write_string;
