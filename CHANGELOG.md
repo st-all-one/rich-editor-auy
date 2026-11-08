@@ -31,7 +31,8 @@ e o projeto usa Versionamento Semântico.
 - A árvore de acessibilidade carrega `DocPath` e a validação usa o path real do documento.
 - Substituições de bloco no caminho quente reutilizam o índice de inícios e revalidam apenas o
   bloco alterado.
-- Blocos de topo passaram a ser armazenados em chunks de 128; S2 caiu de ~106 µs para ~3,2 µs.
+- Blocos de topo passaram a ser armazenados em chunks de 128; S2 caiu de ~106 µs para ~3,1 µs.
+- Documentos com até 128 blocos usam um único chunk flat; S1 caiu de ~2,05 µs para ~1,97 µs.
 
 ### Corrigido
 

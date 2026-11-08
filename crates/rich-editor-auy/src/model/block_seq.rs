@@ -7,7 +7,8 @@ use alloc::vec::Vec;
 use core::slice;
 
 use super::block::Block;
-use super::chunks::{Chunk, Chunks};
+use super::chunk::Chunk;
+use super::chunks::Chunks;
 
 /// Borrowed view over top-level blocks.
 #[derive(Clone, Copy, Debug)]
@@ -55,6 +56,7 @@ impl<'a> BlockSeq<'a> {
 pub struct TopBlockIter<'a> {
     chunks: slice::Iter<'a, Arc<Chunk>>,
     current: slice::Iter<'a, Arc<Block>>,
+    flat: Option<slice::Iter<'a, Arc<Block>>>,
 }
 
 impl<'a> TopBlockIter<'a> {
@@ -62,6 +64,15 @@ impl<'a> TopBlockIter<'a> {
         Self {
             chunks,
             current: [].iter(),
+            flat: None,
+        }
+    }
+
+    pub(crate) fn flat(blocks: slice::Iter<'a, Arc<Block>>) -> Self {
+        Self {
+            chunks: [].iter(),
+            current: [].iter(),
+            flat: Some(blocks),
         }
     }
 }
@@ -70,6 +81,9 @@ impl<'a> Iterator for TopBlockIter<'a> {
     type Item = &'a Arc<Block>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if let Some(flat) = &mut self.flat {
+            return flat.next();
+        }
         loop {
             if let Some(block) = self.current.next() {
                 return Some(block);

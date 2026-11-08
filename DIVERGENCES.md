@@ -33,18 +33,19 @@ recurso.
 | 23 | Limites de attrs/runs/bloco não eram aplicados | `model/limits.rs` percorre attrs, marcas, runs e texto em `Doc::new` e em substituições | `enforces_*_limits` |
 | 24 | A11y usava índice da árvore, não `DocPath` | `A11yNode.path` é projetado do documento e `validate_a11y` usa esse path | `a11y_reports_*` |
 | 25 | `schema!` era placeholder silencioso | Proc-macro real com parser de tokens para doc/nós/marcas/attrs e teste de integração; compila no `no_std` (retorna `SchemaError`) | `tests/macro_schema.rs` |
-| 26 | `apply` copiava todo o vetor de blocos e `starts` | Blocos em chunks de 128; substituição copia um chunk + diretório | `model/chunks.rs`, `tests/chunks.rs`; S2 106,5 → 3,16 µs |
+| 26 | `apply` copiava todo o vetor de blocos e `starts` | Blocos em chunks de 128; substituição copia um chunk + diretório | `model/chunks.rs`, `tests/chunks.rs`; S2 106,5 → 3,13 µs |
+| 27 | Documentos pequenos pagavam o diretório de chunks | Até 128 blocos usam um chunk flat; acima disso, diretório de chunks | `model/chunk.rs`; S1 2,05 → 1,97 µs |
 
 ## Divergências abertas
 
 | # | Área | Estado | Impacto | Próximo passo |
 |---|---|---|---|---|
 | A | `schema!` | Front-end real, mas cobre doc/nó/marca/content/group/marks/attrs básicos; sem acessores tipados e sem testes compile-fail | Extensões como `a11y` declarativa e `trybuild` ainda não têm contrato | Adicionar a11y declarativa, acessores e `trybuild`; documentar subconjunto |
-| B | `apply_owned` | Blocos agora em chunks de 128; `replacing_block` copia um chunk + diretório, não o documento inteiro | S2 ~3,19 µs (alvo 10 µs, atingido); S1 ~2,05 µs contra alvo de 0,1 µs e 35 alocações | Fast path flat para documentos pequenos e reduzir o diretório do chunk |
+| B | `apply_owned` | Blocos agora em chunks de 128; `replacing_block` copia um chunk + diretório, não o documento inteiro | S2 ~3,13 µs (alvo 10 µs, atingido); S1 ~1,97 µs contra alvo de 0,1 µs e 35 alocações | `apply_owned` e redução de alocações pequenas |
 | C | Parser JSON | S2 ~34,8 ms contra alvo de 15 ms; surrogate pairs resolvidos; `JsonValue` carrega offset inicial, mas spans completos de campos ainda não | Parse acima do orçamento; offsets são do valor, não do token exato | Perfilar alocações e carregar intervalo completo por valor |
 | D | `validate_a11y` | S2 ~11,3 ms contra alvo de 10 ms | Validação acima do orçamento | Revisar alocações por nó/cachear árvore no adaptador |
 | E | `iai-callgrind`/baseline | Não instalado; `criterion` é informativo | Sem gate determinístico de instruções/regressão de 5% | Adicionar job com valgrind e `bench/baseline.json` |
-| F | Alocação do caminho quente | Inserção de 1 char = 35 alocações; chunks trocam O(n) por diretório pequeno | Acima do alvo de 0 além do step, mas tempo S2 caiu ~34× | Reutilizar starts do chunk e fast path flat para S1 |
+| F | Alocação do caminho quente | Inserção de 1 char = 35 alocações; chunks trocam O(n) por diretório pequeno | Acima do alvo de 0 além do step, mas tempo S2 caiu ~34× | `apply_owned` in-place e buffers reutilizáveis |
 | G | Cenários de bench | Só S1/S2; faltam S0/S3/S4 e operações delete/mark/split/join/undo | Cobertura de `plan/05` incompleta | Adicionar `benches/hot.rs`/`wire.rs` e rodar S0–S4 |
 | H | Limites | Aplicados em `Doc::new`/`replacing_block` para attrs, marcas, runs, texto e strings; o decode ainda pode materializar valores antes da rejeição | Estrutura acima do orçamento é rejeitada, mas memória pode ser alocada antes | Mover a checagem para `decode_attrs`/`decode_marks` e testar o limite de attrs por nó |
 | I | Fuzz | Alvos existem, mas não foram executados neste host (sem `cargo-fuzz`/nightly) | Cobertura de parser/a11y não exercitada localmente | Rodar no CI e anexar corpus |

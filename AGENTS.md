@@ -16,7 +16,7 @@ a11y, file-length, links, zero-style, package) é o gate local; `make check-ecos
 PHP quando as ferramentas existem.
 
 F0–F3.5 estão materializados; `schema!` é um front-end real (subconjunto documentado), o wire valida
-surrogates/limites, os blocos de topo são armazenados em chunks de 128 para evitar cópia O(n) e a
+surrogates/limites, os blocos de topo usam chunks de 128 (flat até 128 blocos) para evitar cópia O(n) e a
 árvore a11y carrega `DocPath`. Lacunas conhecidas estão em
 `DIVERGENCES.md`. F4 tem benchmarks `criterion`, testes de alocação/memória e um gate de
 consultas; `iai-callgrind`, baseline de instruções, fuzz executado e calibração de desempenho ainda

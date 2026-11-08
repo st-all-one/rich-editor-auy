@@ -3,6 +3,7 @@
 pub mod attrs;
 pub mod block;
 pub(crate) mod block_seq;
+mod chunk;
 mod chunks;
 pub mod doc;
 pub mod ids;

@@ -13,87 +13,17 @@
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::slice;
 
 use crate::error::LimitError;
 use crate::pos::{Pos, Range, Size};
 
 use super::block::Block;
 use super::block_seq::{BlockSeq, TopBlockIter};
+use super::chunk::Chunk;
 use super::limits::check_block_limits;
 
 /// Number of top-level blocks in one chunk.
 pub(crate) const CHUNK_BLOCKS: usize = 128;
-
-/// One chunk of blocks and its relative start index.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Chunk {
-    blocks: Box<[Arc<Block>]>,
-    starts: Box<[u32]>,
-    size: u32,
-}
-
-impl Chunk {
-    fn new(blocks: Vec<Arc<Block>>) -> Self {
-        let mut starts = Vec::with_capacity(blocks.len());
-        let mut offset = 0_u32;
-        for block in &blocks {
-            starts.push(offset);
-            offset = offset.saturating_add(block.size().0);
-        }
-        Self {
-            blocks: blocks.into_boxed_slice(),
-            starts: starts.into_boxed_slice(),
-            size: offset,
-        }
-    }
-
-    fn len(&self) -> usize {
-        self.blocks.len()
-    }
-
-    pub(crate) fn iter(&self) -> slice::Iter<'_, Arc<Block>> {
-        self.blocks.iter()
-    }
-
-    fn get(&self, index: usize) -> Option<&Arc<Block>> {
-        self.blocks.get(index)
-    }
-
-    fn range(&self, index: usize) -> Option<Range> {
-        let block = self.blocks.get(index)?;
-        let start = *self.starts.get(index)?;
-        let end = start.checked_add(block.size().0)?;
-        Some(Range::new(Pos(start), Pos(end)))
-    }
-
-    fn at(&self, local: u32) -> Option<(usize, &Arc<Block>)> {
-        let index = self
-            .starts
-            .partition_point(|start| *start <= local)
-            .saturating_sub(1);
-        let block = self.blocks.get(index)?;
-        Some((index, block))
-    }
-
-    fn replacing(&self, local: usize, block: Block) -> Option<Self> {
-        let old = self.blocks.get(local)?;
-        let old_size = old.size().0;
-        let new_size = block.size().0;
-        let mut blocks = self.blocks.to_vec();
-        let slot = blocks.get_mut(local)?;
-        *slot = Arc::new(block);
-        let mut starts = self.starts.to_vec();
-        for start in starts.iter_mut().skip(local.saturating_add(1)) {
-            *start = start.saturating_add(new_size).saturating_sub(old_size);
-        }
-        Some(Self {
-            blocks: blocks.into_boxed_slice(),
-            starts: starts.into_boxed_slice(),
-            size: self.size.saturating_sub(old_size).saturating_add(new_size),
-        })
-    }
-}
 
 /// Chunk directory for a document.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -102,10 +32,23 @@ pub(crate) struct Chunks {
     starts: Box<[u32]>,
     count: usize,
     size: Size,
+    flat: Option<Chunk>,
 }
 
 impl Chunks {
     pub(crate) fn new(blocks: Vec<Arc<Block>>) -> Self {
+        if blocks.len() <= CHUNK_BLOCKS {
+            let flat = Chunk::new(blocks);
+            let count = flat.len();
+            let size = flat.size();
+            return Self {
+                directory: Box::new([]),
+                starts: Box::new([]),
+                count,
+                size: Size(size),
+                flat: Some(flat),
+            };
+        }
         let mut chunks = Vec::new();
         let mut starts = Vec::new();
         let mut count = 0_usize;
@@ -118,7 +61,7 @@ impl Chunks {
             }
             let chunk = Chunk::new(part);
             starts.push(size);
-            size = size.saturating_add(chunk.size);
+            size = size.saturating_add(chunk.size());
             count = count.saturating_add(chunk.len());
             chunks.push(Arc::new(chunk));
         }
@@ -127,6 +70,7 @@ impl Chunks {
             starts: starts.into_boxed_slice(),
             count,
             size: Size(size),
+            flat: None,
         }
     }
 
@@ -143,11 +87,17 @@ impl Chunks {
     }
 
     pub(crate) fn get(&self, index: usize) -> Option<&Arc<Block>> {
+        if let Some(flat) = &self.flat {
+            return flat.get(index);
+        }
         let chunk = self.directory.get(index / CHUNK_BLOCKS)?;
         chunk.get(index % CHUNK_BLOCKS)
     }
 
     pub(crate) fn range(&self, index: usize) -> Option<Range> {
+        if let Some(flat) = &self.flat {
+            return flat.range(index);
+        }
         let chunk_index = index / CHUNK_BLOCKS;
         let local = index % CHUNK_BLOCKS;
         let chunk = self.directory.get(chunk_index)?;
@@ -161,8 +111,11 @@ impl Chunks {
     }
 
     pub(crate) fn at(&self, pos: Pos) -> Option<(usize, &Arc<Block>)> {
-        if pos > self.size.as_pos() || self.directory.is_empty() {
+        if pos > self.size.as_pos() || self.count == 0 {
             return None;
+        }
+        if let Some(flat) = &self.flat {
+            return flat.at(pos.0);
         }
         let chunk_index = self
             .starts
@@ -181,6 +134,9 @@ impl Chunks {
     }
 
     pub(crate) fn iter(&self) -> TopBlockIter<'_> {
+        if let Some(flat) = &self.flat {
+            return TopBlockIter::flat(flat.iter());
+        }
         TopBlockIter::new(self.directory.iter())
     }
 
@@ -195,6 +151,47 @@ impl Chunks {
         limits: &crate::Limits,
     ) -> Result<Self, LimitError> {
         check_block_limits(&block, limits)?;
+        if let Some(flat) = &self.flat {
+            return self.replacing_flat(flat, index, block, limits);
+        }
+        self.replacing_chunked(index, block, limits)
+    }
+
+    fn replacing_flat(
+        &self,
+        flat: &Chunk,
+        index: usize,
+        block: Block,
+        limits: &crate::Limits,
+    ) -> Result<Self, LimitError> {
+        let new_flat = flat
+            .replacing(index, block)
+            .ok_or_else(|| LimitError::Nodes {
+                actual: u32::try_from(index).unwrap_or(u32::MAX),
+                max: u32::try_from(self.count).unwrap_or(u32::MAX),
+            })?;
+        let total = new_flat.size();
+        if total > limits.max_doc_bytes {
+            return Err(LimitError::DocBytes {
+                actual: u64::from(total),
+                max: limits.max_doc_bytes,
+            });
+        }
+        Ok(Self {
+            directory: Box::new([]),
+            starts: Box::new([]),
+            count: self.count,
+            size: Size(total),
+            flat: Some(new_flat),
+        })
+    }
+
+    fn replacing_chunked(
+        &self,
+        index: usize,
+        block: Block,
+        limits: &crate::Limits,
+    ) -> Result<Self, LimitError> {
         let chunk_index = index / CHUNK_BLOCKS;
         let local = index % CHUNK_BLOCKS;
         let old_chunk = self
@@ -204,7 +201,7 @@ impl Chunks {
                 actual: u32::try_from(index).unwrap_or(u32::MAX),
                 max: u32::try_from(self.count).unwrap_or(u32::MAX),
             })?;
-        let old_size = old_chunk.size;
+        let old_size = old_chunk.size();
         let new_chunk =
             Arc::new(
                 old_chunk
@@ -214,7 +211,7 @@ impl Chunks {
                         max: u32::try_from(self.count).unwrap_or(u32::MAX),
                     })?,
             );
-        let new_size = new_chunk.size;
+        let new_size = new_chunk.size();
         let mut chunks = self.directory.to_vec();
         let Some(slot) = chunks.get_mut(chunk_index) else {
             return Err(LimitError::Nodes {
@@ -243,6 +240,7 @@ impl Chunks {
             starts: starts.into_boxed_slice(),
             count: self.count,
             size: Size(total),
+            flat: None,
         })
     }
 }
