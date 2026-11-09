@@ -6,8 +6,28 @@
 
 use core::fmt::{self, Write};
 
-use crate::model::{AttrValue, Attrs, Block, BlockContent, Doc, InlineItem, MarkSet};
+use crate::model::{AttrValue, Attrs, Block, BlockContent, Doc, Fragment, InlineItem, MarkSet};
 use crate::schema::{AttrSpec, Schema};
+
+/// Writes a fragment as canonical JSON.
+///
+/// # Errors
+///
+/// Propagates formatting failures from the sink.
+pub(super) fn write_fragment_into(
+    fragment: &Fragment,
+    schema: &Schema,
+    out: &mut impl Write,
+) -> fmt::Result {
+    out.write_str("{\"blocks\":[")?;
+    for (index, block) in fragment.blocks().iter().enumerate() {
+        if index > 0 {
+            out.write_char(',')?;
+        }
+        write_block(block, schema, out)?;
+    }
+    out.write_str("]}")
+}
 
 /// Writes a document as canonical JSON.
 ///
@@ -90,7 +110,7 @@ fn write_inline_atom(
     out.write_char('}')
 }
 
-fn write_attrs(attrs: &Attrs, specs: &[AttrSpec], out: &mut impl Write) -> fmt::Result {
+pub(super) fn write_attrs(attrs: &Attrs, specs: &[AttrSpec], out: &mut impl Write) -> fmt::Result {
     if attrs.is_empty() {
         return Ok(());
     }
@@ -112,7 +132,7 @@ fn write_attrs(attrs: &Attrs, specs: &[AttrSpec], out: &mut impl Write) -> fmt::
     out.write_char('}')
 }
 
-fn write_value(value: &AttrValue, out: &mut impl Write) -> fmt::Result {
+pub(super) fn write_value(value: &AttrValue, out: &mut impl Write) -> fmt::Result {
     match value {
         AttrValue::Null => out.write_str("null"),
         AttrValue::Bool(value) => out.write_str(if *value { "true" } else { "false" }),
@@ -127,6 +147,18 @@ fn write_value(value: &AttrValue, out: &mut impl Write) -> fmt::Result {
                 write_value(value, out)?;
             }
             out.write_char(']')
+        }
+        AttrValue::Map(entries) => {
+            out.write_char('{')?;
+            for (index, (key, value)) in entries.iter().enumerate() {
+                if index > 0 {
+                    out.write_char(',')?;
+                }
+                write_string(key, out)?;
+                out.write_char(':')?;
+                write_value(value, out)?;
+            }
+            out.write_char('}')
         }
         AttrValue::Ref(target) => {
             out.write_str("{\"doc\":")?;
@@ -151,7 +183,7 @@ fn write_value(value: &AttrValue, out: &mut impl Write) -> fmt::Result {
     }
 }
 
-fn write_marks(marks: &MarkSet, schema: &Schema, out: &mut impl Write) -> fmt::Result {
+pub(super) fn write_marks(marks: &MarkSet, schema: &Schema, out: &mut impl Write) -> fmt::Result {
     if marks.is_empty() {
         return Ok(());
     }

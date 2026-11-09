@@ -9,11 +9,10 @@
 )]
 
 use alloc::boxed::Box;
-use alloc::string::ToString;
 use alloc::sync::Arc;
 
 use crate::error::StepError;
-use crate::model::{Attr, AttrId, AttrValue, Block, Doc};
+use crate::model::{AttrId, Block, Doc};
 use crate::pos::Pos;
 use crate::schema::Schema;
 
@@ -21,12 +20,14 @@ use crate::schema::Schema;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 use super::structural::replace_blocks;
+use super::{inline_attr, mark_attr, node_attr};
 
 mod mark_owned;
 
 use super::text_edit;
 use super::{Slice, Step};
 use mark_owned::mark_range_owned;
+use node_attr::replace_block_owned;
 
 /// Located top-level block: index, absolute start, and block.
 pub(super) type Located<'a> = (usize, u32, &'a Arc<Block>);
@@ -67,8 +68,26 @@ pub fn apply_step(doc: &Doc, schema: &Schema, step: &Step) -> Result<Doc, StepEr
         }
         Step::AddMark { from, to, mark } => mark_range(doc, schema, *from, *to, mark, true),
         Step::RemoveMark { from, to, mark } => mark_range(doc, schema, *from, *to, mark, false),
-        Step::SetNodeAttr { pos, attr, value } => set_node_attr(doc, schema, *pos, *attr, value),
-        Step::SetDocAttr { attr, value } => set_doc_attr(doc, schema, *attr, value),
+        Step::SetNodeAttr { pos, attr, value } => {
+            node_attr::set_node_attr(doc, schema, *pos, *attr, value)
+        }
+        Step::SetDocAttr { attr, value } => node_attr::set_doc_attr(doc, schema, *attr, value),
+        Step::ReplaceDoc {
+            doc: replacement, ..
+        } => Ok(replacement.clone()),
+        Step::SetInlineAttr {
+            from,
+            to,
+            attr,
+            value,
+        } => inline_attr::set_inline_attr(doc, schema, *from, *to, *attr, value),
+        Step::SetMarkAttr {
+            from,
+            to,
+            mark,
+            attr,
+            value,
+        } => mark_attr::set_mark_attr(doc, schema, *from, *to, *mark, *attr, value),
     }
 }
 
@@ -82,8 +101,24 @@ pub(crate) fn apply_step_owned(doc: Doc, schema: &Schema, step: &Step) -> Result
             mark_range_owned(doc, schema, *from, *to, mark, false)
         }
         Step::SetNodeAttr { pos, attr, value } => {
-            set_node_attr_owned(doc, schema, *pos, *attr, value)
+            node_attr::set_node_attr_owned(doc, schema, *pos, *attr, value)
         }
+        Step::ReplaceDoc {
+            doc: replacement, ..
+        } => Ok(replacement.clone()),
+        Step::SetInlineAttr {
+            from,
+            to,
+            attr,
+            value,
+        } => inline_attr::set_inline_attr_owned(doc, schema, *from, *to, *attr, value),
+        Step::SetMarkAttr {
+            from,
+            to,
+            mark,
+            attr,
+            value,
+        } => mark_attr::set_mark_attr_owned(doc, schema, *from, *to, *mark, *attr, value),
     }
 }
 
@@ -169,98 +204,6 @@ fn split_block(doc: &Doc, at: Pos, _insert: u32) -> Result<Doc, StepError> {
     }
     blocks.insert(index.saturating_add(1), Arc::new(right_block));
     Doc::new(doc.attrs().clone(), blocks, &crate::Limits::default()).map_err(StepError::Limit)
-}
-
-fn set_node_attr(
-    doc: &Doc,
-    schema: &Schema,
-    pos: Pos,
-    attr: AttrId,
-    value: &AttrValue,
-) -> Result<Doc, StepError> {
-    set_node_attr_owned(doc.clone(), schema, pos, attr, value)
-}
-
-fn set_node_attr_owned(
-    doc: Doc,
-    schema: &Schema,
-    pos: Pos,
-    attr: AttrId,
-    value: &AttrValue,
-) -> Result<Doc, StepError> {
-    let (index, _start, block) = locate(&doc, pos)?;
-    let attrs = if matches!(value, AttrValue::Null) {
-        block.attrs().without(attr)
-    } else {
-        block
-            .attrs()
-            .with(Attr {
-                id: attr,
-                value: value.clone(),
-            })
-            .ok_or_else(|| StepError::Unknown {
-                path: Box::from("attr"),
-            })?
-    };
-    schema
-        .validate_attrs(block.kind(), &attrs)
-        .map_err(|error| StepError::Unknown {
-            path: Box::from(error.to_string()),
-        })?;
-    let new_block = match block.as_textblock() {
-        Some(text) => Block::text(block.kind(), attrs, text.clone()),
-        None => Block::container(
-            block.kind(),
-            attrs,
-            block
-                .children()
-                .map(<[Arc<Block>]>::to_vec)
-                .unwrap_or_default(),
-        ),
-    };
-    replace_block_owned(doc, index, new_block)
-}
-
-fn set_doc_attr(
-    doc: &Doc,
-    schema: &Schema,
-    attr: AttrId,
-    value: &AttrValue,
-) -> Result<Doc, StepError> {
-    let Some(spec) = schema.doc().attrs.iter().find(|spec| spec.id == attr) else {
-        return Err(StepError::Unknown {
-            path: Box::from("doc_attr"),
-        });
-    };
-    if !matches!(value, AttrValue::Null) && !Schema::value_matches(&spec.kind, value) {
-        return Err(StepError::Unknown {
-            path: Box::from("doc_attr_type"),
-        });
-    }
-    let attrs = if matches!(value, AttrValue::Null) {
-        doc.attrs().without(attr)
-    } else {
-        doc.attrs()
-            .with(Attr {
-                id: attr,
-                value: value.clone(),
-            })
-            .ok_or_else(|| StepError::Unknown {
-                path: Box::from("doc_attr"),
-            })?
-    };
-    Doc::new(attrs, doc.blocks().to_vec(), &crate::Limits::default()).map_err(StepError::Limit)
-}
-
-fn replace_block_owned(doc: Doc, index: usize, block: Block) -> Result<Doc, StepError> {
-    if index >= doc.blocks().len() {
-        return Err(StepError::OutOfBounds {
-            position: u32::try_from(index).unwrap_or(u32::MAX),
-            size: doc.size().0,
-        });
-    }
-    doc.replacing_block_owned(index, block, &crate::Limits::default())
-        .map_err(StepError::Limit)
 }
 
 #[cfg(feature = "visits")]

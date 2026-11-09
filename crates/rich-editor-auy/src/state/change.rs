@@ -90,7 +90,10 @@ impl ChangeSet {
                         new: Range::new(*from, Pos(from.0.saturating_add(new_len))),
                     });
                 }
-                Step::AddMark { from, to, .. } | Step::RemoveMark { from, to, .. } => {
+                Step::AddMark { from, to, .. }
+                | Step::RemoveMark { from, to, .. }
+                | Step::SetInlineAttr { from, to, .. }
+                | Step::SetMarkAttr { from, to, .. } => {
                     if from != to {
                         ranges.push(RangeChange {
                             old: Range::new(*from, *to),
@@ -99,6 +102,9 @@ impl ChangeSet {
                     }
                 }
                 Step::SetNodeAttr { .. } | Step::SetDocAttr { .. } => {}
+                Step::ReplaceDoc { .. } => {
+                    full = true;
+                }
             }
         }
         ranges.sort_by_key(|change| (change.old.start.0, change.new.start.0));

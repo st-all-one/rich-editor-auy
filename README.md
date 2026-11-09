@@ -52,6 +52,31 @@ accessibility overlay: semantic roles, names and `alt` live in the document and 
 into the DOM after the fact. Everything else (layout, styling, persistence, collaboration) is a
 consumer concern or a separate crate (post-MVP).
 
+## Ingestion contract
+
+The wire vocabulary is the complete schema (`Schema::full()`). Every incoming token **must** map to
+a declared node, mark, atom or attribute; raw XML, HTML or arbitrary JSON is never accepted as a
+document subtree. A converter that cannot map a token has exactly three options:
+
+1. map it to an existing semantic node;
+2. represent it as declared data (for example an image asset);
+3. reject it with a structured RFC 9457 `ProblemDetails` error.
+
+Unknown tokens, marks and attributes produce `ProblemDetails` with `type`, `title`, `status`,
+`detail`, `instance`, `code` and `suggestion`. Documented conversions:
+
+| Source feature | Decision |
+|---|---|
+| Chart, graph | Render to an image (`image` / `image_block`) with `alt` and caption |
+| Formula, equation | Render to an image; formula source goes in `alt` or `raw_code` |
+| Page break | Not representable: error `unrepresentable_feature` |
+| Comment, tracked change | Not representable in the default schema: reject or accept/reject first |
+| Text box | Flatten into paragraphs/blockquote in reading order |
+| XML, HTML, code, any verbatim payload | `raw_code` with `text*`, `language`, `format`, `filename`, `meta`, `line_numbers`, and `CodeBlock` a11y |
+
+`raw_code` is a block, not an escape hatch around validation: its text is still a normal text
+model, its attributes are schema-declared, and it projects as a `CodeBlock` with a language.
+
 ## Design at a glance
 
 ```mermaid
@@ -69,7 +94,8 @@ graph LR
 - **Positions:** UTF-8 byte offsets plus one token per structural open/close/atom; the UI converts
   to its own units (UTF-16, graphemes) explicitly.
 - **Editing:** closed `Step` enum (`Replace`, `ReplaceAround`, `AddMark`, `RemoveMark`,
-  `SetNodeAttr`, `SetDocAttr`) with `apply`/`invert`/`map`.
+  `SetNodeAttr`, `SetDocAttr`, `ReplaceDoc`, `SetInlineAttr`, `SetMarkAttr`) with
+  `apply`/`invert`/`map`.
 - **Ownership:** `Arc` + copy-on-write; the common path mutates in place when uniquely owned.
 - **Bytes:** compact canonical JSON, schema-ordered attributes and marks, no floats, no `HashMap`.
 - **Bytes and hashes:** BLAKE3-256 is the only project hash (schema fingerprint, envelope digest,
@@ -91,6 +117,8 @@ crates.io crate, a WASM artifact, a Composer package and a Deno 2.0/JSR workspac
 - **Zero styling:** the adapter uses semantic native elements by default (`neutral` is opt-in),
   `data-auy-*` and an `A11yTree` mapping. No CSS, no `class`, no `style`, no wrapper; `destroy()`
   restores the host.
+- **Render data:** `Editor.view()` returns a `DocView` with schema names, byte ranges, inline runs,
+  atoms, attributes and nested children; it is separate from the semantic `A11yTree`.
 - **References:** `DocId`/`NodeId` + typed `RefTarget`; the core preserves and validates shape, the
   optional `refs` crate resolves a corpus, backlinks and dangling targets.
 - **Accessibility (AUY):** the core supplies the semantic tree, names/`alt`/`lang`/`dir`/order and
@@ -100,16 +128,19 @@ crates.io crate, a WASM artifact, a Composer package and a Deno 2.0/JSR workspac
   explicitly transfers rendering responsibility.
 
 ```ts
-import { EditorState, init } from "@rich-editor-auy/core";
+import { Editor, init } from "@rich-editor-auy/core";
 import { mount } from "@rich-editor-auy/dom";
 
 await init();
-const state = EditorState.fromJSON(savedJSON);
-const editor = mount(host, {
-  state,
+const editor = Editor.fromJSON(savedJSON);
+const view = mount(host, {
+  state: editor,
   label: "Documento",
   onInput: (_event, current) => save(current.doc().toJSON()),
 });
+
+editor.apply({ ops: [{ op: "insert_text", at: 0, text: "Olá" }] });
+view.dispatch(editor);
 ```
 
 `onInput` is an intent boundary: the adapter does not reimplement the edit algebra. The host

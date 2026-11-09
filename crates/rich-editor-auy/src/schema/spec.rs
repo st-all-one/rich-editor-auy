@@ -22,6 +22,12 @@ pub enum AttrType {
     Bool,
     /// Reference target.
     Ref,
+    /// One of a closed set of strings.
+    Enum(Box<[Box<str>]>),
+    /// Canonical array whose items share one type.
+    List(Box<Self>),
+    /// Canonical object whose values share one type.
+    Map(Box<Self>),
     /// Any canonical value.
     Any,
 }

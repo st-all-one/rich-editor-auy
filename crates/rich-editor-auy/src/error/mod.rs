@@ -1,11 +1,13 @@
 //! Closed error types shared by the core.
 
 mod limit;
+mod problem;
 mod schema;
 mod step;
 mod wire;
 
 pub use limit::LimitError;
+pub use problem::{PROBLEM_BASE, ProblemDetails, suggestion_for_token};
 pub use schema::SchemaError;
 pub use step::StepError;
 pub use wire::{InvariantError, ParseError, SelectionError};

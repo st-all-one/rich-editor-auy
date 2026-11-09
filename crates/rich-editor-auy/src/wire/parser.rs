@@ -6,6 +6,7 @@
 
 use alloc::boxed::Box;
 use alloc::string::{String, ToString};
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 
 use crate::error::ParseError;
@@ -66,30 +67,47 @@ pub(super) fn decode_doc(
         &schema.doc().attrs,
         DecodePath::DocAttrs,
     )?;
-    let mut blocks = Vec::new();
-    let mut path = Vec::new();
-    if let Some(content) = value.get("content") {
-        let values = content
-            .as_array()
-            .ok_or_else(|| ParseError::new("content_not_array", 0))?;
-        for (index, child) in values.iter().enumerate() {
-            path.push(u32::try_from(index).unwrap_or(u32::MAX));
-            blocks.push(alloc::sync::Arc::new(decode_block(
-                child, schema, options, &mut path, 0,
-            )?));
-            path.pop();
+    let blocks = match value.get("content") {
+        Some(content) => {
+            let values = content
+                .as_array()
+                .ok_or_else(|| ParseError::new("content_not_array", 0))?;
+            decode_blocks(values, schema, options)?
         }
-    }
+        None => Vec::new(),
+    };
     let doc = Doc::new(attrs, blocks, &options.limits).map_err(|_error| ParseError {
         code: Box::from("limit"),
         offset: value.start(),
         path: Box::from("doc"),
     })?;
+    check_doc(doc, schema, 0)
+}
+
+/// Decodes a block sequence, using array indices as stable error paths.
+pub(super) fn decode_blocks(
+    values: &[JsonValue],
+    schema: &Schema,
+    options: &ParseOptions,
+) -> Result<Vec<Arc<Block>>, ParseError> {
+    let mut blocks = Vec::new();
+    let mut path = Vec::new();
+    for (index, child) in values.iter().enumerate() {
+        path.push(u32::try_from(index).unwrap_or(u32::MAX));
+        let decoded = decode_block(child, schema, options, &mut path, 0)?;
+        path.pop();
+        blocks.push(Arc::new(decoded));
+    }
+    Ok(blocks)
+}
+
+/// Validates a constructed document against the schema.
+pub(super) fn check_doc(doc: Doc, schema: &Schema, offset: u32) -> Result<Doc, ParseError> {
     let report = doc.validate(schema);
     if let Some(issue) = report.issues.first() {
         return Err(ParseError {
             code: Box::from(issue.invariant),
-            offset: issue.position.map_or(0, |position| position.0),
+            offset: issue.position.map_or(offset, |position| position.0),
             path: issue.path.as_str().into(),
         });
     }
@@ -207,7 +225,7 @@ fn decode_block(
         path.push(u32::try_from(index).unwrap_or(u32::MAX));
         let decoded = decode_block(child, schema, options, path, depth.saturating_add(1))?;
         path.pop();
-        blocks.push(alloc::sync::Arc::new(decoded));
+        blocks.push(Arc::new(decoded));
     }
     Ok(Block::container(kind, attrs, blocks))
 }

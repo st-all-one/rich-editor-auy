@@ -1,18 +1,18 @@
-import type { A11yNode, EditorState } from "@rich-editor-auy/core";
+import type { A11yNode, StateProvider } from "@rich-editor-auy/core";
 import { renderTree } from "./render.ts";
 
 export interface MountOptions {
-  readonly state: EditorState;
+  readonly state: StateProvider;
   readonly editable?: boolean;
   readonly label?: string;
-  readonly onInput?: (event: InputEvent, state: EditorState) => void;
+  readonly onInput?: (event: InputEvent, state: StateProvider) => void;
 }
 
 export interface MountedEditor {
   destroy(): void;
   view(): HTMLElement;
-  dispatch(state: EditorState): void;
-  state(): EditorState;
+  dispatch(state: StateProvider): void;
+  state(): StateProvider;
 }
 
 interface SavedHost {
@@ -74,11 +74,11 @@ export function mount(host: HTMLElement, options: MountOptions): MountedEditor {
     view(): HTMLElement {
       return host;
     },
-    dispatch(next: EditorState): void {
+    dispatch(next: StateProvider): void {
       state = next;
       render();
     },
-    state(): EditorState {
+    state(): StateProvider {
       return state;
     },
   };

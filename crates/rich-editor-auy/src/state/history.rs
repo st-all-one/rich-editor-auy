@@ -11,7 +11,7 @@
 use alloc::vec::Vec;
 
 use crate::error::EditError;
-use crate::model::Doc;
+use crate::model::{Doc, GroupId};
 use crate::schema::Schema;
 use crate::step::{Step, apply_step};
 
@@ -34,17 +34,52 @@ pub enum Origin {
     Remote,
     /// Programmatic API.
     Api,
+    /// Structured ingestion from an external source.
+    Import,
+}
+
+/// Observable history state for hosts.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent undo and redo availability flags"
+)]
+pub struct HistoryInfo {
+    /// Whether an undo group is available.
+    pub can_undo: bool,
+    /// Whether a redo group is available.
+    pub can_redo: bool,
+    /// Number of undoable groups.
+    pub undo_depth: usize,
+    /// Number of redoable groups.
+    pub redo_depth: usize,
+    /// Bytes retained by undo and redo groups.
+    pub bytes: usize,
+    /// Origin of the latest undoable group.
+    pub last_origin: Option<Origin>,
 }
 
 /// One undo group.
 #[derive(Clone, Debug)]
 pub(crate) struct Group {
+    pub(crate) id: Option<GroupId>,
     pub(crate) steps: Vec<Step>,
     pub(crate) inverse: Vec<Step>,
     pub(crate) selection_before: Selection,
     pub(crate) selection_after: Selection,
     pub(crate) origin: Origin,
     pub(crate) bytes: usize,
+}
+
+impl Group {
+    /// Appends `next` so the pair undoes and redoes as one entry.
+    fn absorb(&mut self, next: Self) {
+        self.steps.extend(next.steps);
+        self.inverse.extend(next.inverse);
+        self.selection_after = next.selection_after;
+        self.origin = next.origin;
+        self.bytes = self.bytes.saturating_add(next.bytes);
+    }
 }
 
 /// Bounded linear history.
@@ -64,6 +99,9 @@ impl Default for History {
 
 impl History {
     /// Creates a history with explicit budgets.
+    ///
+    /// `max_groups` of zero retains no undo groups. Under a byte budget at least one group is
+    /// kept so the latest edit remains undoable.
     #[must_use]
     pub fn new(max_groups: usize, max_bytes: usize) -> Self {
         Self {
@@ -74,21 +112,57 @@ impl History {
         }
     }
 
-    /// Records one group and clears redo.
+    /// Returns the configured group budget.
+    #[must_use]
+    pub const fn max_groups(&self) -> usize {
+        self.max_groups
+    }
+
+    /// Returns the configured byte budget.
+    #[must_use]
+    pub const fn max_bytes(&self) -> usize {
+        self.max_bytes
+    }
+
+    /// Replaces the budgets and trims the retained undo groups.
+    pub fn set_limits(&mut self, max_groups: usize, max_bytes: usize) {
+        self.max_groups = max_groups;
+        self.max_bytes = max_bytes;
+        self.trim();
+    }
+
+    /// Discards every undo and redo group.
+    pub fn clear(&mut self) {
+        self.done.clear();
+        self.undone.clear();
+    }
+
+    /// Returns an observable snapshot.
+    #[must_use]
+    pub fn info(&self) -> HistoryInfo {
+        HistoryInfo {
+            can_undo: self.can_undo(),
+            can_redo: self.can_redo(),
+            undo_depth: self.done.len(),
+            redo_depth: self.undone.len(),
+            bytes: self.done_bytes().saturating_add(self.undone_bytes()),
+            last_origin: self.last_origin(),
+        }
+    }
+
+    /// Records one group, clearing redo and merging consecutive host groups.
     pub(crate) fn record(&mut self, group: Group) {
         self.undone.clear();
+        if let Some(id) = group.id
+            && let Some(last) = self.done.last_mut()
+            && last.id == Some(id)
+        {
+            last.absorb(group);
+            self.trim();
+            return;
+        }
         self.done.push(group);
-        while self.done.len() > self.max_groups {
-            self.done.remove(0);
-        }
-        let mut total = self.bytes();
-        while total > self.max_bytes && self.done.len() > 1 {
-            if self.done.is_empty() {
-                break;
-            }
-            self.done.remove(0);
-            total = self.bytes();
-        }
+        self.trim();
     }
 
     /// Returns whether undo is possible.
@@ -145,7 +219,55 @@ impl History {
         Ok(Some((current, group.selection_after, changes)))
     }
 
-    fn bytes(&self) -> usize {
+    fn done_bytes(&self) -> usize {
         self.done.iter().map(|group| group.bytes).sum()
+    }
+
+    fn undone_bytes(&self) -> usize {
+        self.undone.iter().map(|group| group.bytes).sum()
+    }
+
+    fn trim(&mut self) {
+        while self.done.len() > self.max_groups {
+            self.done.remove(0);
+        }
+        if self.done.is_empty() {
+            return;
+        }
+        let mut total = self.done_bytes();
+        while total > self.max_bytes && self.done.len() > 1 {
+            let removed = self.done.remove(0);
+            total = total.saturating_sub(removed.bytes);
+        }
+    }
+}
+
+impl super::EditorState {
+    /// Returns the observable history state.
+    #[must_use]
+    pub fn history_info(&self) -> HistoryInfo {
+        self.history.info()
+    }
+
+    /// Returns the configured history budgets.
+    #[must_use]
+    pub fn history_limits(&self) -> (usize, usize) {
+        (self.history.max_groups(), self.history.max_bytes())
+    }
+
+    /// Returns a state with every undo and redo group discarded.
+    #[must_use]
+    pub fn clear_history(&self) -> Self {
+        let mut state = self.clone();
+        state.history.clear();
+        state
+    }
+
+    /// Returns a state with replacement history budgets.
+    #[must_use]
+    pub fn with_history_limits(&self, max_groups: usize, max_bytes: usize) -> Self {
+        let mut state = self.clone();
+        state.history.set_limits(max_groups, max_bytes);
+        state
     }
 }

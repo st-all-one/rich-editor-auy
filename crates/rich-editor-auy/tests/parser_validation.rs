@@ -36,6 +36,18 @@ fn rejects_text_inside_a_block_container() {
 }
 
 #[test]
+fn rejects_data_and_javascript_urls() {
+    assert!(parse(
+        r#"{"type":"doc","content":[{"type":"paragraph","content":[{"type":"image","attrs":{"alt":"x","src":"data:image/png;base64,AAAA"}}]}]}"#
+    )
+    .is_err());
+    assert!(parse(
+        r#"{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"x","marks":[{"type":"link","attrs":{"href":"javascript:alert(1)"}}]}]}]}"#
+    )
+    .is_err());
+}
+
+#[test]
 fn accepts_canonical_nested_mark_attrs_and_round_trips() {
     let input = r#"{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"site","marks":[{"type":"link","attrs":{"href":"https://example.test"}}]}]}]}"#;
     let doc = parse(input);

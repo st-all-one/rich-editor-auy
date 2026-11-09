@@ -4,6 +4,7 @@
     reason = "explicit edit algebra and mapping branches"
 )]
 
+use crate::model::CellRef;
 use crate::pos::{Assoc, Pos, Range};
 use crate::step::Mapping;
 
@@ -34,6 +35,18 @@ pub enum Selection {
         /// Position before the node.
         pos: Pos,
     },
+    /// Table-cell selection over one table's effective grid.
+    ///
+    /// Grid positions covered by a merged cell resolve to that cell's origin, so a selection may
+    /// address any slot of the rectangle.
+    Table {
+        /// Table ordinal in document order.
+        table: u32,
+        /// Anchor cell.
+        anchor: CellRef,
+        /// Head cell.
+        head: CellRef,
+    },
 }
 
 impl Selection {
@@ -56,11 +69,21 @@ impl Selection {
         }
     }
 
+    /// Creates a table-cell selection; `table` comes from the anchor address.
+    #[must_use]
+    pub const fn table(anchor: CellRef, head: CellRef) -> Self {
+        Self::Table {
+            table: anchor.table,
+            anchor,
+            head,
+        }
+    }
+
     /// Returns the anchor position.
     #[must_use]
     pub const fn anchor(self) -> Option<Pos> {
         match self {
-            Self::None | Self::Node { .. } => None,
+            Self::None | Self::Node { .. } | Self::Table { .. } => None,
             Self::Caret { pos, .. } => Some(pos),
             Self::Text { anchor, .. } => Some(anchor),
         }
@@ -70,17 +93,19 @@ impl Selection {
     #[must_use]
     pub const fn head(self) -> Option<Pos> {
         match self {
-            Self::None | Self::Node { .. } => None,
+            Self::None | Self::Node { .. } | Self::Table { .. } => None,
             Self::Caret { pos, .. } => Some(pos),
             Self::Text { head, .. } => Some(head),
         }
     }
 
     /// Returns the normalized range.
+    ///
+    /// Table selections address cells instead of positions and have no range.
     #[must_use]
     pub const fn range(self) -> Option<Range> {
         match self {
-            Self::None | Self::Node { .. } => None,
+            Self::None | Self::Node { .. } | Self::Table { .. } => None,
             Self::Caret { pos, .. } => Some(Range::new(pos, pos)),
             Self::Text { anchor, head, .. } => {
                 if anchor.0 <= head.0 {
@@ -93,12 +118,19 @@ impl Selection {
     }
 
     /// Returns whether the selection is empty.
+    ///
+    /// A table selection is empty when it addresses one cell.
     #[must_use]
     pub fn is_empty(self) -> bool {
-        self.range().is_none_or(Range::is_empty)
+        match self {
+            Self::Table { anchor, head, .. } => anchor == head,
+            _ => self.range().is_none_or(Range::is_empty),
+        }
     }
 
     /// Maps the selection through a composition of steps.
+    ///
+    /// Table selections address table cells, not document positions, so they are preserved.
     #[must_use]
     pub fn map(self, mapping: &Mapping) -> Self {
         match self {
@@ -119,13 +151,25 @@ impl Selection {
             Self::Node { pos } => Self::Node {
                 pos: mapping.map_pos(pos, Assoc::After).unwrap_or(pos),
             },
+            Self::Table { .. } => self,
         }
     }
 
     /// Returns whether every position is inside the document.
+    ///
+    /// A table selection is valid when both cells address the selected table.
     #[must_use]
     pub fn is_valid(self, size: Pos) -> bool {
-        self.anchor().is_none_or(|pos| pos.0 <= size.0)
+        let table_valid = match self {
+            Self::Table {
+                table,
+                anchor,
+                head,
+            } => anchor.table == table && head.table == table,
+            _ => true,
+        };
+        table_valid
+            && self.anchor().is_none_or(|pos| pos.0 <= size.0)
             && self.head().is_none_or(|pos| pos.0 <= size.0)
             && self
                 .range()

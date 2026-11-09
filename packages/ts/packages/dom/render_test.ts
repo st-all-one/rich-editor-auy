@@ -143,3 +143,72 @@ Deno.test("renders links and images with accessible attributes", () => {
   assert.equal(link.attributes.get("href"), "https://example.test");
   assert(link.children.length === 1);
 });
+
+Deno.test("renders raw code language on block elements", () => {
+  const host = render({
+    path: "0",
+    role: "code_block",
+    code_language: "rust",
+    range: { from: 0, to: 4 },
+    children: [{
+      path: "0/0",
+      role: "text",
+      text: "fn main() {}",
+      range: { from: 1, to: 4 },
+      children: [],
+    }],
+  });
+  const pre = host.children[0] as FakeElement;
+  assert.equal(pre.tagName, "pre");
+  assert.equal(pre.dataset.auyLanguage, "rust");
+  assert.equal(pre.dataset.auyRole, "code_block");
+});
+
+Deno.test("renders figures, image blocks, and table captions", () => {
+  const host = render({
+    path: "0",
+    role: "figure",
+    range: { from: 0, to: 4 },
+    children: [{
+      path: "0/0",
+      role: "image",
+      alt: "Diagram",
+      src: "https://example.test/diagram.png",
+      caption: "Flow",
+      range: { from: 1, to: 2 },
+      children: [],
+    }, {
+      path: "0/1",
+      role: "caption",
+      text: "Flow chart",
+      range: { from: 2, to: 4 },
+      children: [],
+    }],
+  });
+  const figure = host.children[0] as FakeElement;
+  assert.equal(figure.tagName, "figure");
+  const image = figure.children[0] as FakeElement;
+  assert.equal(image.tagName, "img");
+  assert.equal(image.attributes.get("alt"), "Diagram");
+
+  const tableHost = render({
+    path: "0",
+    role: "table",
+    range: { from: 0, to: 4 },
+    children: [{
+      path: "0/0",
+      role: "table_caption",
+      range: { from: 0, to: 0 },
+      children: [{
+        path: "0/0/0",
+        role: "text",
+        text: "Sales",
+        range: { from: 0, to: 0 },
+        children: [],
+      }],
+    }],
+  });
+  const table = tableHost.children[0] as FakeElement;
+  assert.equal(table.tagName, "table");
+  assert.equal((table.children[0] as FakeElement).tagName, "caption");
+});

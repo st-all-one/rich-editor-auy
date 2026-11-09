@@ -72,6 +72,16 @@ pub(crate) fn decode_attrs(
             offset: value.start(),
             ..error
         })?;
+        if crate::schema::is_url_attr(&spec.name)
+            && let AttrValue::Str(url) = &decoded
+            && crate::schema::is_unsafe_url(url)
+        {
+            return Err(ParseError {
+                code: Box::from("unsafe_url"),
+                offset: value.start(),
+                path: path.boxed(),
+            });
+        }
         if !Schema::value_matches(&spec.kind, &decoded) {
             return Err(ParseError {
                 code: Box::from("attr_type"),
@@ -102,7 +112,7 @@ pub(crate) fn decode_attrs(
 
 fn decode_value(value: &JsonValue, kind: &AttrType) -> Result<AttrValue, ParseError> {
     match kind {
-        AttrType::Str => value
+        AttrType::Str | AttrType::Enum(_) => value
             .as_str()
             .map(|text| AttrValue::Str(Box::from(text)))
             .ok_or_else(|| ParseError::new("expected_string", 0)),
@@ -115,6 +125,26 @@ fn decode_value(value: &JsonValue, kind: &AttrType) -> Result<AttrValue, ParseEr
             _ => Err(ParseError::new("expected_bool", 0)),
         },
         AttrType::Ref => decode_ref(value).map(AttrValue::Ref),
+        AttrType::List(inner) => {
+            let JsonKind::Array(values) = value.kind() else {
+                return Err(ParseError::new("expected_array", 0));
+            };
+            let mut items = Vec::new();
+            for item in values {
+                items.push(decode_value(item, inner)?);
+            }
+            Ok(AttrValue::Array(items.into_boxed_slice()))
+        }
+        AttrType::Map(inner) => {
+            let JsonKind::Object(members) = value.kind() else {
+                return Err(ParseError::new("expected_map", 0));
+            };
+            let mut entries = Vec::new();
+            for (name, member) in members {
+                entries.push((name.clone(), decode_value(member, inner)?));
+            }
+            AttrValue::map(entries).ok_or_else(|| ParseError::new("duplicate_map_key", 0))
+        }
         AttrType::Any => decode_any(value),
     }
 }
@@ -184,7 +214,17 @@ fn decode_any(value: &JsonValue) -> Result<AttrValue, ParseError> {
             }
             Ok(AttrValue::Array(out.into_boxed_slice()))
         }
-        JsonKind::Object(_) => decode_ref(value).map(AttrValue::Ref),
+        JsonKind::Object(members) => {
+            if value.get("doc").is_some() {
+                decode_ref(value).map(AttrValue::Ref)
+            } else {
+                let mut out = Vec::new();
+                for (name, member) in members {
+                    out.push((name.clone(), decode_any(member)?));
+                }
+                AttrValue::map(out).ok_or_else(|| ParseError::new("duplicate_map_key", 0))
+            }
+        }
     }
 }
 

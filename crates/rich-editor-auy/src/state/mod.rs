@@ -7,15 +7,20 @@
 mod apply_owned;
 mod change;
 mod composition;
+mod editor;
 mod history;
 mod selection;
+mod table;
+mod table_commands;
 mod transaction;
+mod transaction_attrs;
 mod transaction_join;
 mod transaction_meta;
 
 pub use change::{ChangeSet, RangeChange};
 pub use composition::{CompositionEvent, CompositionId};
-pub use history::{History, Origin};
+pub use editor::{AppliedInfo, Editor, EditorOptions};
+pub use history::{History, HistoryInfo, Origin};
 pub use selection::Selection;
 pub use transaction::Transaction;
 
@@ -28,6 +33,7 @@ use crate::pos::{Pos, Range};
 use crate::schema::Schema;
 use crate::step::{Mapping, Step, apply_step};
 
+use composition::Composition;
 use history::Group;
 
 /// Error returned by state application.
@@ -50,7 +56,8 @@ pub struct EditorState {
     stored_marks: MarkSet,
     schema: Arc<Schema>,
     history: History,
-    composition: Option<CompositionId>,
+    composition: Option<Composition>,
+    next_composition: u64,
 }
 
 impl EditorState {
@@ -84,6 +91,7 @@ impl EditorState {
             schema,
             history: History::default(),
             composition: None,
+            next_composition: 0,
         })
     }
 
@@ -97,6 +105,7 @@ impl EditorState {
             schema,
             history: History::default(),
             composition: None,
+            next_composition: 0,
         }
     }
 
@@ -159,17 +168,24 @@ impl EditorState {
             .stored_marks()
             .cloned()
             .unwrap_or_else(|| self.stored_marks.clone());
+        let composition = if transaction.composition().is_some() {
+            self.composition.clone()
+        } else {
+            None
+        };
         let mut state = Self {
             doc,
             selection,
             stored_marks,
             schema: Arc::clone(&self.schema),
             history: self.history.clone(),
-            composition: transaction.composition().or(self.composition),
+            composition,
+            next_composition: self.next_composition,
         };
         if transaction.adds_to_history() && !inverse.is_empty() {
-            let bytes = step_bytes(&inverse);
+            let bytes = step_bytes(transaction.steps()).saturating_add(step_bytes(&inverse));
             state.history.record(Group {
+                id: transaction.group(),
                 steps: transaction.steps().to_vec(),
                 inverse,
                 selection_before: self.selection,
@@ -248,6 +264,7 @@ fn step_bytes(steps: &[Step]) -> usize {
     let mut total = 0_usize;
     for step in steps {
         total = total.saturating_add(match step {
+            Step::ReplaceDoc { doc, .. } => usize::try_from(doc.size().0).unwrap_or(usize::MAX),
             Step::Replace { slice, .. } | Step::ReplaceAround { slice, .. } => slice
                 .text
                 .len()
@@ -255,7 +272,9 @@ fn step_bytes(steps: &[Step]) -> usize {
             Step::AddMark { .. }
             | Step::RemoveMark { .. }
             | Step::SetNodeAttr { .. }
-            | Step::SetDocAttr { .. } => 0,
+            | Step::SetDocAttr { .. }
+            | Step::SetInlineAttr { .. }
+            | Step::SetMarkAttr { .. } => 0,
         });
     }
     total

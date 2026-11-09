@@ -64,7 +64,7 @@ pub(super) fn check_attr_limits(attrs: &Attrs, limits: &crate::Limits) -> Result
         });
     }
     for attr in attrs {
-        check_value_limits(&attr.value, limits)?;
+        check_value_limits(&attr.value, limits, 0)?;
     }
     Ok(())
 }
@@ -72,12 +72,26 @@ pub(super) fn check_attr_limits(attrs: &Attrs, limits: &crate::Limits) -> Result
 fn check_value_limits(
     value: &super::attrs::AttrValue,
     limits: &crate::Limits,
+    depth: u16,
 ) -> Result<(), LimitError> {
+    if depth > limits.max_depth {
+        return Err(LimitError::Depth {
+            actual: u32::from(depth),
+            max: u32::from(limits.max_depth),
+        });
+    }
     match value {
         super::attrs::AttrValue::Str(text) => check_string_limit(text, limits),
         super::attrs::AttrValue::Array(values) => {
             for value in values {
-                check_value_limits(value, limits)?;
+                check_value_limits(value, limits, depth.saturating_add(1))?;
+            }
+            Ok(())
+        }
+        super::attrs::AttrValue::Map(entries) => {
+            for (key, value) in entries {
+                check_string_limit(key, limits)?;
+                check_value_limits(value, limits, depth.saturating_add(1))?;
             }
             Ok(())
         }

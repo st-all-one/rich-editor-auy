@@ -7,6 +7,7 @@
 mod builder;
 mod expr;
 mod fingerprint;
+mod full;
 mod machine;
 mod mark;
 mod preset;
@@ -172,6 +173,14 @@ impl Schema {
                 });
             };
             validate_value(&spec.kind, &pair.value)?;
+            if is_url_attr(&spec.name)
+                && let AttrValue::Str(url) = &pair.value
+                && is_unsafe_url(url)
+            {
+                return Err(SchemaError::A11y {
+                    code: Box::from("unsafe_url"),
+                });
+            }
         }
         for spec in &node.attrs {
             if spec.required && attrs.get(spec.id).is_none() && spec.default.is_none() {
@@ -196,6 +205,23 @@ impl Schema {
     }
 }
 
+/// Returns whether an attribute name carries a navigable URL.
+#[must_use]
+pub(crate) fn is_url_attr(name: &str) -> bool {
+    matches!(name, "src" | "href" | "poster" | "canonical_url")
+}
+
+/// Returns whether a URL uses a scheme forbidden by the ingestion contract.
+#[must_use]
+pub(crate) fn is_unsafe_url(url: &str) -> bool {
+    let url = url.trim_start();
+    url.get(..5)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("data:"))
+        || url
+            .get(..11)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("javascript:"))
+}
+
 fn validate_value(kind: &AttrType, value: &AttrValue) -> Result<(), SchemaError> {
     let matches = match (kind, value) {
         (AttrType::Any, _)
@@ -203,6 +229,22 @@ fn validate_value(kind: &AttrType, value: &AttrValue) -> Result<(), SchemaError>
         | (AttrType::Bool, AttrValue::Bool(_))
         | (AttrType::Ref, AttrValue::Ref(_)) => true,
         (AttrType::Int { min, max }, AttrValue::Int(number)) => *min <= *number && *number <= *max,
+        (AttrType::Enum(allowed), AttrValue::Str(text)) => {
+            allowed.iter().any(|value| value.as_ref() == text.as_ref())
+        }
+        (AttrType::List(inner), AttrValue::Array(items)) => {
+            items.iter().all(|item| validate_value(inner, item).is_ok())
+        }
+        (AttrType::Map(inner), AttrValue::Map(entries)) => {
+            let canonical = entries.windows(2).all(|pair| match pair {
+                [left, right] => left.0 < right.0,
+                _ => true,
+            });
+            canonical
+                && entries
+                    .iter()
+                    .all(|(_, value)| validate_value(inner, value).is_ok())
+        }
         _ => false,
     };
     if matches {

@@ -1,8 +1,11 @@
 //! Closed edit steps and their effect on canonical documents.
 
 mod apply;
+mod inline_attr;
 mod invert;
 mod map;
+mod mark_attr;
+mod node_attr;
 mod structural;
 mod text_edit;
 mod text_splice;
@@ -17,7 +20,7 @@ pub use map::{Mapping, StepMap, StepMapRange};
 use alloc::boxed::Box;
 
 use crate::error::StepError;
-use crate::model::{AttrId, AttrValue, Doc, Fragment, Mark, TextBlock};
+use crate::model::{AttrId, AttrValue, Doc, Fragment, Mark, MarkId, TextBlock};
 use crate::pos::{Pos, Range};
 use crate::schema::Schema;
 
@@ -147,6 +150,37 @@ pub enum Step {
         /// New value.
         value: AttrValue,
     },
+    /// Replace the whole document with a snapshot.
+    ReplaceDoc {
+        /// Replacement document.
+        doc: Doc,
+        /// Structural size of the document being replaced.
+        old_size: u32,
+    },
+    /// Set an attribute on one inline atom.
+    SetInlineAttr {
+        /// Atom start position.
+        from: Pos,
+        /// Atom end position.
+        to: Pos,
+        /// Attribute index.
+        attr: AttrId,
+        /// New value.
+        value: AttrValue,
+    },
+    /// Set an attribute on runs that already carry a mark.
+    SetMarkAttr {
+        /// Start position.
+        from: Pos,
+        /// End position.
+        to: Pos,
+        /// Mark index.
+        mark: MarkId,
+        /// Attribute index.
+        attr: AttrId,
+        /// New value.
+        value: AttrValue,
+    },
 }
 
 impl Step {
@@ -178,10 +212,15 @@ impl Step {
             Self::ReplaceAround {
                 from, to, insert, ..
             } => StepMap::replacement(*from, to.0.saturating_sub(from.0), *insert),
+            Self::ReplaceDoc { doc, old_size } => {
+                StepMap::replacement(Pos(0), *old_size, doc.size().0)
+            }
             Self::AddMark { .. }
             | Self::RemoveMark { .. }
             | Self::SetNodeAttr { .. }
-            | Self::SetDocAttr { .. } => StepMap::identity(),
+            | Self::SetDocAttr { .. }
+            | Self::SetInlineAttr { .. }
+            | Self::SetMarkAttr { .. } => StepMap::identity(),
         }
     }
 
@@ -190,7 +229,10 @@ impl Step {
     pub fn is_noop(&self) -> bool {
         match self {
             Self::Replace { from, to, slice } => from == to && slice.is_empty(),
-            Self::AddMark { from, to, .. } | Self::RemoveMark { from, to, .. } => from == to,
+            Self::AddMark { from, to, .. }
+            | Self::RemoveMark { from, to, .. }
+            | Self::SetInlineAttr { from, to, .. }
+            | Self::SetMarkAttr { from, to, .. } => from == to,
             _ => false,
         }
     }
@@ -203,7 +245,9 @@ pub fn range_of(step: &Step) -> Option<Range> {
         Step::Replace { from, to, .. }
         | Step::ReplaceAround { from, to, .. }
         | Step::AddMark { from, to, .. }
-        | Step::RemoveMark { from, to, .. } => Some(Range::new(*from, *to)),
-        Step::SetNodeAttr { .. } | Step::SetDocAttr { .. } => None,
+        | Step::RemoveMark { from, to, .. }
+        | Step::SetInlineAttr { from, to, .. }
+        | Step::SetMarkAttr { from, to, .. } => Some(Range::new(*from, *to)),
+        Step::SetNodeAttr { .. } | Step::SetDocAttr { .. } | Step::ReplaceDoc { .. } => None,
     }
 }

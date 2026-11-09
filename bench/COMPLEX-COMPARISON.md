@@ -165,3 +165,26 @@ N=500 node tiptap.mjs
 ```
 
 Arquivos: `bench/examples/all_types.rs`, `bench/examples/complex.rs`, `bench/reference/`.
+
+## 7. Estado persistente vs JSON por operação
+
+O harness `bench/examples/stateful.rs` compara o caminho legado (parse + apply + serialize a cada
+tecla) com o `Editor` stateful introduzido no plano 11. Documento: 1.000 parágrafos, 100 bytes
+cada, 159 KB de JSON canônico, schema completo.
+
+| Cenário | ms/op | Ops |
+|---|---:|---:|
+| Legado: `from_json` + `apply` + `to_json_string` | 2,120 | 200 |
+| Stateful: `apply` sem JSON | 0,0306 | 2.000 |
+| Stateful: serializar uma vez ao final | 0,114 | 100 |
+| Importar documento (`Editor::from_json`) | 2,093 | 200 |
+| Importar fragmento no início | 2,411 | 200 |
+
+Ganho: **~69×** por edição sem JSON e **~18,7×** no round-trip completo. Importação continua sendo
+o custo dominado por parse + validação, como esperado; ela é uma operação de lote, não de tecla.
+
+Reprodução:
+
+```sh
+cargo run --release --manifest-path bench/Cargo.toml --example stateful
+```

@@ -26,6 +26,8 @@ pub struct Transaction {
     pub(super) add_to_history: bool,
     pub(super) composition: Option<CompositionId>,
     pub(super) composition_range: Option<Range>,
+    pub(super) composition_step_start: usize,
+    pub(super) composition_selection: Option<Selection>,
     pub(super) base: Option<Doc>,
 }
 
@@ -46,6 +48,8 @@ impl Transaction {
             add_to_history: true,
             composition: None,
             composition_range: None,
+            composition_step_start: 0,
+            composition_selection: None,
             base: None,
         }
     }

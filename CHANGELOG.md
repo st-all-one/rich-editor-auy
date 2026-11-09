@@ -7,6 +7,21 @@ e o projeto usa Versionamento Semântico.
 
 ### Adicionado
 
+- Schema completo (`Schema::full`) com tabela, figura/`image_block`, `raw_code` textual, metadados,
+  referências, atributos tipados (`Enum`/`List`/`Map`) e projeções a11y (`CodeBlock`, `code_language`).
+- `ProblemDetails` RFC 9457 para tokens desconhecidos/não representáveis, com `code`, `instance` e
+  sugestão de conversão (gráfico/fórmula → imagem; page break → erro; markup bruto → `raw_code`).
+- `Doc::table_info`/`Doc::cell` e validação de grade de tabela (I17–I25), incluindo spans, headers
+  e seleção `Selection::Table` com comandos de tabela.
+- `Editor` stateful com versão, seleção, histórico, undo/redo, `ReplaceDoc`, fragmentos e comandos
+  de tabela; WASM expõe a classe `Editor`, ingestão em lote e erros `ProblemDetails`.
+- `DocView` render-oriented no WASM/TS: nomes, ranges, runs, atoms, atributos, filhos e versão,
+  separado da árvore a11y; CLI e WASM usam `Schema::full()`.
+- Mídia completa no schema (`mime`, `size_bytes`, dimensões/intrínsecas em vídeo/anexo), listas
+  ordenadas projetam `ordered`, e URLs `data:`/`javascript:` são rejeitadas na decodificação.
+- Steps `ReplaceDoc`, `SetInlineAttr` e `SetMarkAttr`, com inversão exata; composição/histórico
+  agrupado, `HistoryInfo`, clear e limites.
+- Benchmark A/B `bench/examples/stateful.rs`: ~69× por edição sem JSON e ~18,7× no round-trip completo.
 - Workspace Rust `rich-editor-auy` com core `no_std`, macros, bindings WASM e testkit.
 - Modelo canônico de blocos, schema builder, expressões de conteúdo, posições e wire JSON.
 - Fingerprint BLAKE3-256 e envelope durável.
@@ -48,4 +63,5 @@ e o projeto usa Versionamento Semântico.
 
 ### Removido
 
-- Nada ainda.
+- `basicSchema()`/`documentSchema()` do pacote TypeScript: existe um único preset público,
+  `fullSchema()`, e todos os caminhos WASM usam `Schema::full`.

@@ -55,6 +55,8 @@ pub struct A11yNode {
     pub caption: Option<Box<str>>,
     /// Media transcript.
     pub transcript: Option<Box<str>>,
+    /// Declared code language for code and raw-code blocks.
+    pub code_language: Option<Box<str>>,
     /// Whether a list is ordered.
     pub ordered: Option<bool>,
     /// Table cell scope.
@@ -123,6 +125,7 @@ impl Doc {
             src: None,
             caption: None,
             transcript: None,
+            code_language: None,
             ordered: None,
             scope: None,
             colspan: None,

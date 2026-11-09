@@ -73,6 +73,7 @@ fn allocations() -> usize {
 
 #[test]
 fn one_character_insertion_has_a_bounded_allocation_count() {
+    let _guard = ALLOC_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
     let schema = Schema::basic();
     assert!(schema.is_ok(), "basic schema must compile");
     let Ok(schema) = schema else {
@@ -99,7 +100,6 @@ fn one_character_insertion_has_a_bounded_allocation_count() {
     let state = EditorState::from_doc(Arc::clone(&schema), doc);
     let mut transaction = state.transaction();
     assert!(transaction.insert_text(Pos(1), "x").is_ok());
-    let _guard = ALLOC_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
     reset();
     let applied = state.apply(transaction);
     assert!(applied.is_ok(), "insert must apply");
@@ -114,6 +114,7 @@ fn one_character_insertion_has_a_bounded_allocation_count() {
 
 #[test]
 fn owned_insert_avoids_directory_copies() {
+    let _guard = ALLOC_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
     let schema = Schema::basic();
     assert!(schema.is_ok(), "basic schema must compile");
     let Ok(schema) = schema else {
@@ -137,7 +138,6 @@ fn owned_insert_avoids_directory_copies() {
     let state = EditorState::from_doc(Arc::clone(&schema), doc);
     let mut transaction = state.transaction();
     assert!(transaction.insert_text(Pos(1), "x").is_ok());
-    let _guard = ALLOC_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
     reset();
     let applied = state.apply_owned(transaction);
     assert!(applied.is_ok(), "owned insert must apply");

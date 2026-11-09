@@ -9,6 +9,12 @@ use alloc::vec::Vec;
 
 use super::ids::{AttrId, RefTarget};
 
+/// One entry of a canonical attribute map.
+pub type AttrMapEntry = (Box<str>, AttrValue);
+
+/// Canonical attribute map payload whose keys are unique and lexically sorted.
+pub type AttrMap = Box<[AttrMapEntry]>;
+
 /// A closed canonical attribute value.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AttrValue {
@@ -22,8 +28,29 @@ pub enum AttrValue {
     Str(Box<str>),
     /// Ordered array.
     Array(Box<[Self]>),
-    /// Reference target, the only nested object in the wire format.
+    /// Canonical object: keys are unique and sorted lexically.
+    Map(AttrMap),
+    /// Reference target.
     Ref(RefTarget),
+}
+
+impl AttrValue {
+    /// Builds a canonical map value with lexically sorted, unique keys.
+    ///
+    /// Returns `None` when two entries share a key.
+    #[must_use]
+    pub fn map(mut entries: Vec<AttrMapEntry>) -> Option<Self> {
+        entries.sort_by(|left, right| left.0.cmp(&right.0));
+        let canonical = entries.windows(2).all(|pair| match pair {
+            [left, right] => left.0 != right.0,
+            _ => true,
+        });
+        if canonical {
+            Some(Self::Map(entries.into_boxed_slice()))
+        } else {
+            None
+        }
+    }
 }
 
 /// One ordered attribute pair.

@@ -66,6 +66,7 @@ fn write_node(node: &A11yNode, schema: &Schema, out: &mut impl Write) -> fmt::Re
     write_str_field(out, "src", node.src.as_deref())?;
     write_str_field(out, "caption", node.caption.as_deref())?;
     write_str_field(out, "transcript", node.transcript.as_deref())?;
+    write_str_field(out, "code_language", node.code_language.as_deref())?;
     if let Some(ordered) = node.ordered {
         write!(out, ",\"ordered\":{ordered}")?;
     }

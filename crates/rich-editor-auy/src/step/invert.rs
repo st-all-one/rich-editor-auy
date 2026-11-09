@@ -15,6 +15,8 @@ use crate::step::Slice;
 use crate::step::Step;
 
 use super::apply::{locate, replace_len};
+use super::inline_attr;
+use super::mark_attr::{self, MarkAttrOld};
 use super::structural::block_index_at;
 use super::text_edit;
 
@@ -78,6 +80,44 @@ pub fn invert_step(doc: &Doc, step: &Step) -> Result<Step, StepError> {
         Step::SetDocAttr { attr, .. } => {
             let value = doc.attrs().get(*attr).cloned().unwrap_or(AttrValue::Null);
             Ok(Step::SetDocAttr { attr: *attr, value })
+        }
+        Step::ReplaceDoc { doc: replaced, .. } => Ok(Step::ReplaceDoc {
+            doc: doc.clone(),
+            old_size: replaced.size().0,
+        }),
+        Step::SetInlineAttr { from, to, attr, .. } => {
+            let value = inline_attr::inline_attr_value(doc, *from, *to, *attr)?;
+            Ok(Step::SetInlineAttr {
+                from: *from,
+                to: *to,
+                attr: *attr,
+                value,
+            })
+        }
+        Step::SetMarkAttr {
+            from,
+            to,
+            mark,
+            attr,
+            ..
+        } => {
+            let value = match mark_attr::mark_attr_value(doc, *from, *to, *mark, *attr) {
+                MarkAttrOld::Absent => AttrValue::Null,
+                MarkAttrOld::Uniform(value) => value,
+                MarkAttrOld::Mixed => {
+                    return Ok(Step::ReplaceDoc {
+                        doc: doc.clone(),
+                        old_size: doc.size().0,
+                    });
+                }
+            };
+            Ok(Step::SetMarkAttr {
+                from: *from,
+                to: *to,
+                mark: *mark,
+                attr: *attr,
+                value,
+            })
         }
         Step::ReplaceAround {
             from,

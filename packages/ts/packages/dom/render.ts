@@ -125,6 +125,9 @@ function applyAttributes(element: HTMLElement, node: A11yNode): void {
   const src = node.src === undefined ? undefined : safeUrl(node.src);
   if (src !== undefined) element.setAttribute("src", src);
   if (node.alt !== undefined) element.setAttribute("alt", node.alt);
+  if (node.code_language !== undefined) {
+    element.dataset.auyLanguage = node.code_language;
+  }
   if (node.caption !== undefined) element.setAttribute("title", node.caption);
   if (node.colspan !== undefined) {
     element.setAttribute("colspan", String(node.colspan));

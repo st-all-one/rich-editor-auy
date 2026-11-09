@@ -64,8 +64,7 @@ impl Envelope {
         schema: &Schema,
         options: &ParseOptions,
     ) -> Result<Self, EditError> {
-        let value =
-            parse_json(input, crate::Limits::default().max_depth).map_err(EditError::Parse)?;
+        let value = parse_json(input, options.limits.max_depth).map_err(EditError::Parse)?;
         let format = value
             .get("format")
             .and_then(JsonValue::as_str)

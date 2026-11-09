@@ -11,12 +11,13 @@ use alloc::vec::Vec;
 use crate::pos::{DocPath, Pos};
 use crate::schema::Schema;
 
+use super::table::{TableProblem, scan_table};
 use super::{Block, BlockContent, Doc, InlineItem, MAX_RUN_BYTES, MarkSet, NodeId, NodeKind};
 
 /// One structural invariant violation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DocIssue {
-    /// Stable invariant identifier (`I1`–`I12`/`I16`).
+    /// Stable invariant identifier (`I1`–`I12`, `I16`–`I25`).
     pub invariant: &'static str,
     /// Stable structural path.
     pub path: DocPath,
@@ -65,6 +66,7 @@ impl Doc {
         let mut offset = 0_u32;
         let mut path = Vec::new();
         let text_kind = schema.node_kind("text");
+        let table_kind = schema.node_kind("table");
         for (index, block) in self.blocks().iter().enumerate() {
             path.push(u32::try_from(index).unwrap_or(u32::MAX));
             validate_block(
@@ -75,6 +77,7 @@ impl Doc {
                 &mut ids,
                 &mut report,
                 text_kind,
+                table_kind,
             );
             path.pop();
             offset = offset.saturating_add(block.size().0);
@@ -98,6 +101,7 @@ fn validate_block(
     ids: &mut BTreeSet<NodeId>,
     report: &mut DocReport,
     text_kind: Option<NodeKind>,
+    table_kind: Option<NodeKind>,
 ) {
     let Some(spec) = schema.node(block.kind()) else {
         report.issues.push(issue("I2", path, Some(start)));
@@ -174,7 +178,16 @@ fn validate_block(
             let mut offset = start.0.saturating_add(1);
             for (index, child) in children.iter().enumerate() {
                 path.push(u32::try_from(index).unwrap_or(u32::MAX));
-                validate_block(child, schema, path, Pos(offset), ids, report, text_kind);
+                validate_block(
+                    child,
+                    schema,
+                    path,
+                    Pos(offset),
+                    ids,
+                    report,
+                    text_kind,
+                    table_kind,
+                );
                 path.pop();
                 offset = offset.saturating_add(child.size().0);
             }
@@ -184,6 +197,46 @@ fn validate_block(
         }
         BlockContent::Atom(_) => {}
     }
+    if Some(block.kind()) == table_kind {
+        let Some(scan) = scan_table(0, block, schema) else {
+            return;
+        };
+        for problem in &scan.problems {
+            report.issues.push(table_issue(block, start, path, problem));
+        }
+    }
+}
+
+/// Maps one grid problem to a structural issue with its document path and position.
+fn table_issue(block: &Block, start: Pos, path: &[u32], problem: &TableProblem) -> DocIssue {
+    let mut issue_path = path.to_vec();
+    let mut position = start;
+    if let Some(row) = problem.row
+        && let Some((row_pos, row_block)) = child_at(block, start, row)
+    {
+        issue_path.push(row);
+        position = row_pos;
+        if let Some(cell) = problem.cell
+            && let Some((cell_pos, _)) = child_at(row_block, row_pos, cell)
+        {
+            issue_path.push(cell);
+            position = cell_pos;
+        }
+    }
+    issue(problem.invariant, &issue_path, Some(position))
+}
+
+/// Returns the start position of one child block.
+fn child_at(block: &Block, start: Pos, index: u32) -> Option<(Pos, &Block)> {
+    let target = usize::try_from(index).ok()?;
+    let mut cursor = start.0.saturating_add(1);
+    for (offset, child) in block.children()?.iter().enumerate() {
+        if offset == target {
+            return Some((Pos(cursor), child));
+        }
+        cursor = cursor.saturating_add(child.size().0);
+    }
+    None
 }
 
 #[allow(
@@ -220,6 +273,12 @@ fn validate_marks(
                     continue;
                 };
                 if !Schema::value_matches(&spec.kind, &attr.value) {
+                    report.issues.push(issue("I7", path, Some(start)));
+                }
+                if crate::schema::is_url_attr(&spec.name)
+                    && let crate::model::AttrValue::Str(url) = &attr.value
+                    && crate::schema::is_unsafe_url(url)
+                {
                     report.issues.push(issue("I7", path, Some(start)));
                 }
             }

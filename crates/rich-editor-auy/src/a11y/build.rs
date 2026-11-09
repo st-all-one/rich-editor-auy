@@ -4,6 +4,7 @@
     reason = "explicit deterministic branch structure"
 )]
 
+use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -13,6 +14,7 @@ use crate::pos::{DocPath, Pos, Range};
 use crate::schema::{NodeSpec, Schema};
 
 use super::role::{A11yRole, AltPolicy, NamePolicy};
+use super::text::{block_text, descendant_text};
 use super::tree::{A11yNode, CellScope};
 
 #[allow(
@@ -38,18 +40,31 @@ pub(super) fn block_nodes(
         return children;
     };
     let text = block_text(block);
+    let name_text = match a11y.name {
+        NamePolicy::TextContent if text.is_empty() => {
+            let mut collected = String::new();
+            descendant_text(block, &mut collected);
+            Cow::Owned(collected)
+        }
+        _ => Cow::Borrowed(text.as_str()),
+    };
     let text_field = if text.is_empty() {
         None
     } else {
         Some(Box::from(text.as_str()))
     };
-    let name = name_for(spec, a11y.name, block.attrs(), &text);
+    let name = name_for(spec, a11y.name, block.attrs(), &name_text);
     let alt = alt_for(spec, a11y.alt, block.attrs(), name.as_deref());
     let href = attr_str(schema, block.kind(), block.attrs(), "href");
     let src = attr_str(schema, block.kind(), block.attrs(), "src");
     let caption = attr_str(schema, block.kind(), block.attrs(), "caption");
     let transcript = attr_str(schema, block.kind(), block.attrs(), "transcript");
-    let ordered = attr_bool(schema, block.kind(), block.attrs(), "ordered");
+    let code_language = attr_str(schema, block.kind(), block.attrs(), "language");
+    let ordered = match &*spec.name {
+        "ordered_list" => Some(true),
+        "bullet_list" => Some(false),
+        _ => None,
+    };
     let level = a11y.level.and_then(|id| match block.attrs().get(id) {
         Some(AttrValue::Int(value)) => u8::try_from(*value).ok(),
         _ => match a11y.role {
@@ -78,6 +93,7 @@ pub(super) fn block_nodes(
         src,
         caption,
         transcript,
+        code_language,
         ordered,
         scope,
         colspan,
@@ -145,6 +161,7 @@ fn child_nodes(
                         src: None,
                         caption: None,
                         transcript: None,
+                        code_language: None,
                         ordered: None,
                         scope: None,
                         colspan: None,
@@ -178,6 +195,7 @@ fn child_nodes(
                                 src: attr_str(schema, atom.kind, &atom.attrs, "src"),
                                 caption: None,
                                 transcript: None,
+                                code_language: None,
                                 ordered: None,
                                 scope: None,
                                 colspan: None,
@@ -194,14 +212,6 @@ fn child_nodes(
         }
         BlockContent::Atom(_) => Vec::new(),
     }
-}
-
-fn block_text(block: &Block) -> String {
-    let mut text = String::new();
-    if let Some(inner) = block.as_textblock() {
-        inner.text_into(&mut text);
-    }
-    text
 }
 
 fn name_for(spec: &NodeSpec, policy: NamePolicy, attrs: &Attrs, text: &str) -> Option<Box<str>> {
@@ -249,15 +259,6 @@ fn attr_str(schema: &Schema, kind: NodeKind, attrs: &Attrs, name: &str) -> Optio
     let spec = schema.node(kind)?;
     let attr = spec.attrs.iter().find(|attr| &*attr.name == name)?;
     attr_string(attrs.get(attr.id))
-}
-
-fn attr_bool(schema: &Schema, kind: NodeKind, attrs: &Attrs, name: &str) -> Option<bool> {
-    let spec = schema.node(kind)?;
-    let attr = spec.attrs.iter().find(|attr| &*attr.name == name)?;
-    match attrs.get(attr.id) {
-        Some(AttrValue::Bool(value)) => Some(*value),
-        _ => None,
-    }
 }
 
 fn attr_u16(schema: &Schema, kind: NodeKind, attrs: &Attrs, name: &str) -> Option<u16> {

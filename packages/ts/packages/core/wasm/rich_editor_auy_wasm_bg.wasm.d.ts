@@ -1,10 +1,28 @@
 /* tslint:disable */
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
+export const __wbg_editor_free: (a: number, b: number) => void;
 export const a11y_tree: (a: number, b: number) => [number, number, number, number];
 export const canonicalize: (a: number, b: number) => [number, number, number, number];
 export const canonicalize_envelope: (a: number, b: number) => [number, number, number, number];
 export const delete_range: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+export const editor_apply: (a: number, b: number, c: number) => [number, number, number, number];
+export const editor_blocks: (a: number) => number;
+export const editor_clearHistory: (a: number) => void;
+export const editor_docJSON: (a: number) => [number, number];
+export const editor_dryRun: (a: number, b: number, c: number) => [number, number, number, number];
+export const editor_fromEnvelope: (a: number, b: number) => [number, number, number];
+export const editor_fromJSON: (a: number, b: number) => [number, number, number];
+export const editor_historyJSON: (a: number) => [number, number];
+export const editor_import: (a: number, b: number, c: number) => [number, number];
+export const editor_new: () => [number, number, number];
+export const editor_redo: (a: number) => [number, number, number, number];
+export const editor_schemaFingerprint: (a: number) => [number, number];
+export const editor_setSelection: (a: number, b: number, c: number) => [number, number, number, number];
+export const editor_stateJSON: (a: number) => [number, number];
+export const editor_undo: (a: number) => [number, number, number, number];
+export const editor_version: (a: number) => number;
+export const editor_viewJSON: (a: number) => [number, number, number, number];
 export const envelope_doc: (a: number, b: number) => [number, number, number, number];
 export const insert_text: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
 export const join_backward: (a: number, b: number, c: number) => [number, number, number, number];

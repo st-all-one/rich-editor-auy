@@ -5,6 +5,7 @@ pub mod codes;
 mod json;
 mod marks;
 pub mod role;
+mod text;
 pub mod tree;
 pub mod validate;
 

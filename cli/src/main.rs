@@ -30,7 +30,7 @@ fn main() -> ExitCode {
         eprintln!("error: could not read stdin");
         return ExitCode::FAILURE;
     }
-    let Ok(schema) = Schema::basic() else {
+    let Ok(schema) = Schema::full() else {
         eprintln!("error: could not build schema");
         return ExitCode::FAILURE;
     };
@@ -128,7 +128,7 @@ fn diff(paths: &[String]) -> ExitCode {
         eprintln!("usage: rich-editor-auy-cli diff LEFT RIGHT");
         return ExitCode::FAILURE;
     }
-    let Ok(schema) = Schema::basic() else {
+    let Ok(schema) = Schema::full() else {
         eprintln!("error: could not build schema");
         return ExitCode::FAILURE;
     };

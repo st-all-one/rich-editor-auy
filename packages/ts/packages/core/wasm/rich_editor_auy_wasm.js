@@ -1,7 +1,359 @@
 /* @ts-self-types="./rich_editor_auy_wasm.d.ts" */
 
 /**
+ * Stateful editor exposed to JavaScript.
+ *
+ * Every mutation is atomic: the batch is applied to a clone and committed only when every
+ * operation succeeds, so a rejected batch leaves the editor byte-for-byte unchanged.
+ */
+export class Editor {
+    static __wrap(ptr) {
+        const obj = Object.create(Editor.prototype);
+        obj.__wbg_ptr = ptr;
+        EditorFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        EditorFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_editor_free(ptr, 0);
+    }
+    /**
+     * Applies `{"ops": [...]}` atomically.
+     *
+     * # Errors
+     *
+     * Returns a problem object when any operation is rejected.
+     * @param {string} payload
+     * @returns {string}
+     */
+    apply(payload) {
+        let deferred3_0;
+        let deferred3_1;
+        try {
+            const ptr0 = passStringToWasm0(payload, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ret = wasm.editor_apply(this.__wbg_ptr, ptr0, len0);
+            var ptr2 = ret[0];
+            var len2 = ret[1];
+            if (ret[3]) {
+                ptr2 = 0; len2 = 0;
+                throw takeFromExternrefTable0(ret[2]);
+            }
+            deferred3_0 = ptr2;
+            deferred3_1 = len2;
+            return getStringFromWasm0(ptr2, len2);
+        } finally {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        }
+    }
+    /**
+     * Returns the number of top-level blocks.
+     * @returns {number}
+     */
+    blocks() {
+        const ret = wasm.editor_blocks(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Discards every undo and redo group.
+     */
+    clearHistory() {
+        wasm.editor_clearHistory(this.__wbg_ptr);
+    }
+    /**
+     * Returns the canonical document JSON.
+     * @returns {string}
+     */
+    docJSON() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.editor_docJSON(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * Validates `{"ops": [...]}` without mutating the editor.
+     *
+     * # Errors
+     *
+     * Returns a problem object only when the payload is not valid JSON.
+     * @param {string} payload
+     * @returns {string}
+     */
+    dryRun(payload) {
+        let deferred3_0;
+        let deferred3_1;
+        try {
+            const ptr0 = passStringToWasm0(payload, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ret = wasm.editor_dryRun(this.__wbg_ptr, ptr0, len0);
+            var ptr2 = ret[0];
+            var len2 = ret[1];
+            if (ret[3]) {
+                ptr2 = 0; len2 = 0;
+                throw takeFromExternrefTable0(ret[2]);
+            }
+            deferred3_0 = ptr2;
+            deferred3_1 = len2;
+            return getStringFromWasm0(ptr2, len2);
+        } finally {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        }
+    }
+    /**
+     * Creates an editor from a durable envelope.
+     *
+     * # Errors
+     *
+     * Returns a problem object when the envelope format, fingerprint, or document is invalid.
+     * @param {string} input
+     * @returns {Editor}
+     */
+    static fromEnvelope(input) {
+        const ptr0 = passStringToWasm0(input, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.editor_fromEnvelope(ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return Editor.__wrap(ret[0]);
+    }
+    /**
+     * Creates an editor from canonical document JSON.
+     *
+     * # Errors
+     * Returns a problem object when the document is rejected by the full schema.
+     * @param {string} input
+     * @returns {Editor}
+     */
+    static fromJSON(input) {
+        const ptr0 = passStringToWasm0(input, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.editor_fromJSON(ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return Editor.__wrap(ret[0]);
+    }
+    /**
+     * Returns the observable history state.
+     * @returns {string}
+     */
+    historyJSON() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.editor_historyJSON(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * Imports a document, fragment, or operation batch atomically.
+     *
+     * The returned report carries `accepted`, the resulting block count, the editor version,
+     * every `ProblemDetails`, and the current state.
+     * @param {string} payload
+     * @returns {string}
+     */
+    import(payload) {
+        let deferred2_0;
+        let deferred2_1;
+        try {
+            const ptr0 = passStringToWasm0(payload, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ret = wasm.editor_import(this.__wbg_ptr, ptr0, len0);
+            deferred2_0 = ret[0];
+            deferred2_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        }
+    }
+    /**
+     * Creates an empty editor using the complete schema.
+     *
+     * # Errors
+     * Returns a problem object only if the full preset is inconsistent.
+     */
+    constructor() {
+        const ret = wasm.editor_new();
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0];
+        EditorFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * Redoes the latest undone group.
+     *
+     * # Errors
+     *
+     * Returns a problem object when the step no longer applies.
+     * @returns {string}
+     */
+    redo() {
+        let deferred2_0;
+        let deferred2_1;
+        try {
+            const ret = wasm.editor_redo(this.__wbg_ptr);
+            var ptr1 = ret[0];
+            var len1 = ret[1];
+            if (ret[3]) {
+                ptr1 = 0; len1 = 0;
+                throw takeFromExternrefTable0(ret[2]);
+            }
+            deferred2_0 = ptr1;
+            deferred2_1 = len1;
+            return getStringFromWasm0(ptr1, len1);
+        } finally {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        }
+    }
+    /**
+     * Returns the active schema fingerprint.
+     * @returns {string}
+     */
+    schemaFingerprint() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.editor_schemaFingerprint(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * Sets the selection without creating history.
+     *
+     * # Errors
+     *
+     * Returns a problem object when a position lies beyond the document.
+     * @param {number} from
+     * @param {number} to
+     * @returns {string}
+     */
+    setSelection(from, to) {
+        let deferred2_0;
+        let deferred2_1;
+        try {
+            const ret = wasm.editor_setSelection(this.__wbg_ptr, from, to);
+            var ptr1 = ret[0];
+            var len1 = ret[1];
+            if (ret[3]) {
+                ptr1 = 0; len1 = 0;
+                throw takeFromExternrefTable0(ret[2]);
+            }
+            deferred2_0 = ptr1;
+            deferred2_1 = len1;
+            return getStringFromWasm0(ptr1, len1);
+        } finally {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        }
+    }
+    /**
+     * Returns `{doc, selection, version}`.
+     * @returns {string}
+     */
+    stateJSON() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.editor_stateJSON(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * Undoes the latest group.
+     *
+     * # Errors
+     *
+     * Returns a problem object when the inverse step no longer applies.
+     * @returns {string}
+     */
+    undo() {
+        let deferred2_0;
+        let deferred2_1;
+        try {
+            const ret = wasm.editor_undo(this.__wbg_ptr);
+            var ptr1 = ret[0];
+            var len1 = ret[1];
+            if (ret[3]) {
+                ptr1 = 0; len1 = 0;
+                throw takeFromExternrefTable0(ret[2]);
+            }
+            deferred2_0 = ptr1;
+            deferred2_1 = len1;
+            return getStringFromWasm0(ptr1, len1);
+        } finally {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        }
+    }
+    /**
+     * Returns the current document version.
+     * @returns {number}
+     */
+    version() {
+        const ret = wasm.editor_version(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Returns the render-oriented `DocView` projection.
+     *
+     * # Errors
+     *
+     * Returns a problem object only if the projection cannot be encoded.
+     * @returns {string}
+     */
+    viewJSON() {
+        let deferred2_0;
+        let deferred2_1;
+        try {
+            const ret = wasm.editor_viewJSON(this.__wbg_ptr);
+            var ptr1 = ret[0];
+            var len1 = ret[1];
+            if (ret[3]) {
+                ptr1 = 0; len1 = 0;
+                throw takeFromExternrefTable0(ret[2]);
+            }
+            deferred2_0 = ptr1;
+            deferred2_1 = len1;
+            return getStringFromWasm0(ptr1, len1);
+        } finally {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        }
+    }
+}
+if (Symbol.dispose) Editor.prototype[Symbol.dispose] = Editor.prototype.free;
+
+/**
  * Returns the semantic accessibility tree as canonical JSON.
+ *
+ * # Errors
+ *
+ * Returns a problem object when the input is not a document accepted by the full schema.
  * @param {string} input
  * @returns {string}
  */
@@ -28,6 +380,10 @@ export function a11y_tree(input) {
 
 /**
  * Canonicalizes a document JSON string.
+ *
+ * # Errors
+ *
+ * Returns a problem object when the input is not a document accepted by the full schema.
  * @param {string} input
  * @returns {string}
  */
@@ -54,6 +410,10 @@ export function canonicalize(input) {
 
 /**
  * Validates and canonicalizes a durable envelope, returning canonical envelope JSON.
+ *
+ * # Errors
+ *
+ * Returns a problem object when the envelope format, fingerprint, or document is invalid.
  * @param {string} input
  * @returns {string}
  */
@@ -80,6 +440,10 @@ export function canonicalize_envelope(input) {
 
 /**
  * Deletes a byte range and returns canonical JSON.
+ *
+ * # Errors
+ *
+ * Returns a problem object when the range or input is invalid.
  * @param {string} input
  * @param {number} from
  * @param {number} to
@@ -110,6 +474,10 @@ export function delete_range(input, from, to) {
 
 /**
  * Validates and canonicalizes a durable envelope, returning its document JSON.
+ *
+ * # Errors
+ *
+ * Returns a problem object when the envelope format, fingerprint, or document is invalid.
  * @param {string} input
  * @returns {string}
  */
@@ -136,6 +504,10 @@ export function envelope_doc(input) {
 
 /**
  * Inserts text at a byte position and returns canonical JSON.
+ *
+ * # Errors
+ *
+ * Returns a problem object when the position or input is invalid.
  * @param {string} input
  * @param {number} position
  * @param {string} text
@@ -174,6 +546,10 @@ export function insert_text(input, position, text) {
 
 /**
  * Joins the block at a byte boundary with its previous sibling.
+ *
+ * # Errors
+ *
+ * Returns a problem object when the position or input is invalid.
  * @param {string} input
  * @param {number} position
  * @returns {string}
@@ -202,6 +578,10 @@ export function join_backward(input, position) {
 
 /**
  * Returns the plain text of a document.
+ *
+ * # Errors
+ *
+ * Returns a problem object when the input is not a document accepted by the full schema.
  * @param {string} input
  * @returns {string}
  */
@@ -227,7 +607,11 @@ export function plain_text(input) {
 }
 
 /**
- * Returns the canonical BLAKE3 schema fingerprint.
+ * Returns the canonical BLAKE3 fingerprint of the full schema.
+ *
+ * # Errors
+ *
+ * Returns a problem object only if the full preset is inconsistent.
  * @returns {string}
  */
 export function schema_fingerprint() {
@@ -251,6 +635,10 @@ export function schema_fingerprint() {
 
 /**
  * Splits the block at a byte position and returns canonical JSON.
+ *
+ * # Errors
+ *
+ * Returns a problem object when the position or input is invalid.
  * @param {string} input
  * @param {number} position
  * @returns {string}
@@ -279,6 +667,10 @@ export function split_block(input, position) {
 
 /**
  * Toggles a named mark over a byte range and returns canonical JSON.
+ *
+ * # Errors
+ *
+ * Returns a problem object when the mark, range, or input is invalid.
  * @param {string} input
  * @param {number} from
  * @param {number} to
@@ -319,6 +711,10 @@ export function toggle_mark(input, from, to, mark) {
 
 /**
  * Returns stable accessibility error codes, or `ok`.
+ *
+ * # Errors
+ *
+ * Returns a problem object when the input is not a document accepted by the full schema.
  * @param {string} input
  * @returns {string}
  */
@@ -362,6 +758,9 @@ export function version() {
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
+        __wbg___wbindgen_throw_4c88d8bf264fd984: function(arg0, arg1) {
+            throw new Error(getStringFromWasm0(arg0, arg1));
+        },
         __wbindgen_generic_0000000000000001: function(arg0, arg1) {
             // Cast intrinsic for `Ref(String) -> Externref`.
             const ret = getStringFromWasm0(arg0, arg1);
@@ -381,6 +780,10 @@ function __wbg_get_imports() {
         "./rich_editor_auy_wasm_bg.js": import0,
     };
 }
+
+const EditorFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_editor_free(ptr, 1));
 
 function getStringFromWasm0(ptr, len) {
     ptr = ptr >>> 0;

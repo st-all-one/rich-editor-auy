@@ -41,6 +41,17 @@ recurso.
 | 31 | Writer crescia o `String` final e escrevia run a run | Capacidade pré-calculada e `write_string` copia trechos sem escape de uma vez | `wire/mod.rs`, `wire/writer.rs`; `to_json_string` 2,97 → 1,12 ms |
 | 32 | A11y clonava o `DocPath` ao inserir o nó | `block_nodes` recebe o path por valor e move para o nó; filhos recebem paths novos | `a11y/build.rs`, `a11y/tree.rs`; validate_a11y 11,34 → 11,04 ms |
 | 33 | Writer gravava attrs de marca em `attrs`, mas o decoder só aceitava campos planos | Decoder aceita o objeto `attrs` canônico e mantém compatibilidade com campos planos | `wire/attrs.rs`; teste de round-trip `accepts_canonical_nested_mark_attrs_and_round_trips` |
+| 34 | Figura conteria `image` inline, mas o conteúdo de `figure` é estrutural | Schema completo adiciona `image_block` (mesmos attrs/a11y) e `figure` usa `image_block caption?`; `image` continua inline | `schema/full/nodes.rs`, testes de round-trip de figura |
+| 35 | Comandos de tabela por célula no `Transaction` | Primeira versão reconstrói apenas o bloco `table` e aplica um `Step::ReplaceDoc`; undo restaura o snapshot exato | `state/table_commands.rs`, `state/table/`; `tests/table_commands.rs` |
+| 36 | Ingestão aceitaria `embed` para tokens não representáveis | Não existe `embed`: token desconhecido retorna `ProblemDetails` e sugestão de conversão; payload bruto só entra como `raw_code` textual | `error/problem.rs`, `schema/full`; `tests/schema_full_problems.rs` |
+| 37 | `Schema::basic` e `SchemaBuilder` deixariam de ser públicos | Ainda são públicos para testes/bench/testkit; a fronteira WASM/CLI usa `Schema::full()` | `schema/preset.rs`, `schema/mod.rs`; divergência de API |
+| 38 | Envelope com `schema_version=2` e `migrate_v1_to_full` | Envelope continua versão 1; leitura honra `ParseOptions.limits`, mas não há migração | `wire/envelope.rs`; pendente de cutover TS/PHP |
+| 39 | Clipboard `Doc::slice`/`insertSlice`/`SliceJSON` | Ausente; `Slice` existe apenas como payload interno de step e `FragmentJSON` cobre blocos fechados | `model/doc.rs`, `step/mod.rs`, `wire/fragment.rs` |
+| 40 | `Transaction::set_block_type` e tabela no `Transaction` | `set_block_type` ausente; comandos de tabela estão em `Editor`, não no `Transaction` | `state/transaction.rs`, `state/table_commands.rs` |
+| 41 | `ChangeSet.insertedBlocks/removedBlocks` e `Applied` sem doc no WASM | `ChangeSet` é grosseiro (`0..block_count`) e o WASM devolve `doc` junto | `state/change.rs`, `wasm/src/convert.rs` |
+| 42 | `ImportOptions`/política de IDs/limites de batch | WASM aceita um subconjunto (`mode`, `schema`, `baseVersion`); `source`, `idPolicy`, `idSeed`, `addToHistory`, `requestId` e `BatchLimits` ainda não | `wasm/src/dto.rs`, `wasm/src/import.rs` |
+| 43 | Composição e fachada `Editor`/WASM | Composição existe no `EditorState`, mas não é exposta pelo `Editor`/WASM/TS | `state/composition.rs`, `wasm/src/editor.rs` |
+| 44 | `hard_break` na árvore a11y | Nó existe no schema, mas não tem role e é omitido da árvore; não há role de quebra no contrato | `a11y/build.rs`, `a11y/role.rs` |
 
 ## Divergências abertas
 
