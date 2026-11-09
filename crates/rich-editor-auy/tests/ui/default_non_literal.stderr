@@ -1,0 +1,11 @@
+error: attribute default must be a literal
+ --> tests/ui/default_non_literal.rs:6:13
+  |
+6 |       let _ = schema! {
+  |  _____________^
+7 | |         doc { content: "block+" }
+8 | |         paragraph { group: "block", content: "text*", attrs: { level: int(1..=6) = DEFAULT } }
+9 | |     };
+  | |_____^
+  |
+  = note: this error originates in the macro `schema` (in Nightly builds, run with -Z macro-backtrace for more info)

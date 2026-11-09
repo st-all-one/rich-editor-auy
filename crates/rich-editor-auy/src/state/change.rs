@@ -5,11 +5,13 @@
 )]
 
 use alloc::boxed::Box;
-use alloc::vec::Vec;
+use core::ops::Range as BlockRange;
 
 use crate::model::Doc;
 use crate::pos::{Pos, Range};
 use crate::step::Step;
+
+use super::change_builder::ChangeBuilder;
 
 /// One old/new range pair.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -27,14 +29,18 @@ pub struct RangeChange {
     reason = "selection and structural flags are independent"
 )]
 pub struct ChangeSet {
-    /// Top-level block range potentially affected.
-    pub blocks: core::ops::Range<u32>,
+    /// Top-level block range potentially affected in the new document.
+    pub blocks: BlockRange<u32>,
     /// Ordered old/new ranges.
     pub ranges: Box<[RangeChange]>,
     /// Whether the selection changed.
     pub selection: bool,
-    /// Structural invalidation flag.
+    /// Whether the whole document was replaced.
     pub full: bool,
+    /// New top-level block indices created by the change.
+    pub inserted_blocks: Box<[u32]>,
+    /// Old top-level block indices removed by the change.
+    pub removed_blocks: Box<[u32]>,
 }
 
 impl ChangeSet {
@@ -50,72 +56,20 @@ impl ChangeSet {
         self.ranges.is_empty() && !self.full
     }
 
-    /// Derives a change set from applied steps.
+    /// Derives a change set from steps applied between two documents.
+    ///
+    /// `old` and `new` are the documents before and after the steps.
     #[must_use]
     #[allow(
         clippy::fn_params_excessive_bools,
-        reason = "selection flag mirrors the transaction result"
+        reason = "the selection flag mirrors the transaction result"
     )]
-    pub fn from_steps(doc: &Doc, steps: &[Step], selection_changed: bool) -> Self {
-        let mut ranges = Vec::new();
-        let mut full = false;
+    pub fn from_steps(old: &Doc, new: &Doc, steps: &[Step], selection_changed: bool) -> Self {
+        let mut builder = ChangeBuilder::new();
         for step in steps {
-            match step {
-                Step::Replace { from, to, slice } => {
-                    let new_len = if !slice.content.is_empty() {
-                        slice.content.size().0
-                    } else if let Some(runs) = &slice.runs {
-                        runs.len().0
-                    } else {
-                        u32::try_from(slice.text.len()).unwrap_or(u32::MAX)
-                    };
-                    ranges.push(RangeChange {
-                        old: Range::new(*from, *to),
-                        new: Range::new(*from, Pos(from.0.saturating_add(new_len))),
-                    });
-                }
-                Step::ReplaceAround {
-                    from,
-                    to,
-                    insert,
-                    slice,
-                    ..
-                } => {
-                    full = true;
-                    let new_len = u32::try_from(slice.text.len())
-                        .unwrap_or(u32::MAX)
-                        .saturating_add(*insert);
-                    ranges.push(RangeChange {
-                        old: Range::new(*from, *to),
-                        new: Range::new(*from, Pos(from.0.saturating_add(new_len))),
-                    });
-                }
-                Step::AddMark { from, to, .. }
-                | Step::RemoveMark { from, to, .. }
-                | Step::SetInlineAttr { from, to, .. }
-                | Step::SetMarkAttr { from, to, .. } => {
-                    if from != to {
-                        ranges.push(RangeChange {
-                            old: Range::new(*from, *to),
-                            new: Range::new(*from, *to),
-                        });
-                    }
-                }
-                Step::SetNodeAttr { .. } | Step::SetDocAttr { .. } => {}
-                Step::ReplaceDoc { .. } => {
-                    full = true;
-                }
-            }
+            builder.push(step, old);
         }
-        ranges.sort_by_key(|change| (change.old.start.0, change.new.start.0));
-        full = full || ranges.len() > 1;
-        let block_count = u32::try_from(doc.blocks().len()).unwrap_or(u32::MAX);
-        Self {
-            blocks: 0..block_count,
-            ranges: ranges.into_boxed_slice(),
-            selection: selection_changed,
-            full,
-        }
+        builder.finish(new, selection_changed)
     }
 
     /// Returns ranges as positions.

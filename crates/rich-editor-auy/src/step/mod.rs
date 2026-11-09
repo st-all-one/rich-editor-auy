@@ -10,8 +10,12 @@ mod structural;
 mod text_edit;
 mod text_splice;
 
+pub(crate) use structural::block_index_at;
+pub(crate) use text_edit::slice_text;
+
 pub use apply::apply_step;
 pub(crate) use apply::apply_step_owned;
+pub(crate) use apply::split_at;
 #[cfg(feature = "visits")]
 pub use apply::take_locate_visits;
 pub use invert::invert_step;
@@ -25,6 +29,18 @@ use crate::pos::{Pos, Range};
 use crate::schema::Schema;
 
 use apply::replace_len;
+
+/// Rejects a range that is inverted or ends past the document.
+pub(crate) fn check_range(doc: &Doc, from: Pos, to: Pos) -> Result<(), StepError> {
+    if from > to || to.0 > doc.size().0 {
+        let position = if from > to { from.0 } else { to.0 };
+        return Err(StepError::OutOfBounds {
+            position,
+            size: doc.size().0,
+        });
+    }
+    Ok(())
+}
 
 /// Inline content carried by a replace step.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -78,6 +94,18 @@ impl Slice {
             open_start: 0,
             open_end: 0,
         }
+    }
+
+    /// Returns the document size the slice inserts.
+    #[must_use]
+    pub fn size(&self) -> u32 {
+        if !self.content.is_empty() {
+            return self.content.size().0;
+        }
+        if let Some(runs) = &self.runs {
+            return runs.len().0;
+        }
+        u32::try_from(self.text.len()).unwrap_or(u32::MAX)
     }
 
     /// Returns whether the slice carries no content.

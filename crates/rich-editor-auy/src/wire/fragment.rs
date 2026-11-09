@@ -53,12 +53,11 @@ pub fn from_fragment_json(
         return Ok(Fragment::default());
     }
     let decoded = decode_blocks(values, schema, options)?;
-    let doc = Doc::new(Attrs::empty(), decoded, &options.limits).map_err(|_error| ParseError {
-        code: Box::from("limit"),
-        offset: value.start(),
-        path: Box::from("blocks"),
-    })?;
-    let doc = check_doc(doc, schema, value.start())?;
+    let doc = check_doc(
+        Doc::from_decoded(Attrs::empty(), decoded),
+        schema,
+        value.start(),
+    )?;
     Ok(Fragment::new(doc.blocks().to_vec()))
 }
 

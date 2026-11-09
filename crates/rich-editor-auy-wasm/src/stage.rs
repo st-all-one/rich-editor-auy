@@ -3,15 +3,17 @@
 use std::sync::Arc;
 
 use rich_editor_auy::error::{ProblemDetails, StepError};
-use rich_editor_auy::model::{Block, Doc, Fragment, GroupId, Mark};
+use rich_editor_auy::model::{Attr, Attrs, Block, Doc, Fragment, Mark};
 use rich_editor_auy::pos::{Pos, Range};
 use rich_editor_auy::schema::Schema;
-use rich_editor_auy::state::{AppliedInfo, Editor as CoreEditor, Origin, Selection, Transaction};
+use rich_editor_auy::state::{Selection, Transaction};
+use rich_editor_auy::wire::{ParseOptions, from_slice_json};
 
 use crate::attr;
 use crate::dto::Op;
 use crate::ops::{decode_doc, decode_fragment, selection_of};
 use crate::problem;
+use serde_json::Value;
 
 /// Returns the top-level boundary index for a position.
 fn boundary_index(doc: &Doc, pos: Pos) -> Result<usize, ProblemDetails> {
@@ -63,34 +65,12 @@ pub(crate) fn fragment_replacement(
     Doc::from_blocks(doc.attrs().clone(), blocks).map_err(|error| problem::from_limit_error(&error))
 }
 
-/// Applies operations to a working editor, returning the last applied result.
-pub(crate) fn run_ops(
-    editor: &mut CoreEditor,
-    schema: &Schema,
-    ops: &[Op],
-    origin: Origin,
-) -> Result<Option<AppliedInfo>, ProblemDetails> {
-    let group = GroupId(editor.version().saturating_add(1));
-    let mut last = None;
-    for op in ops {
-        let mut transaction = editor.transaction();
-        transaction.set_origin(origin);
-        transaction.set_group(group);
-        stage(schema, editor.doc(), &mut transaction, op)?;
-        let info = editor
-            .apply(transaction)
-            .map_err(|error| problem::from_edit_error(&error))?;
-        last = Some(info);
-    }
-    Ok(last)
-}
-
 /// Stages one operation on a transaction.
 #[allow(
     clippy::too_many_lines,
     reason = "one exhaustive match keeps every operation shape visible"
 )]
-fn stage(
+pub(crate) fn stage(
     schema: &Schema,
     doc: &Doc,
     transaction: &mut Transaction,
@@ -120,12 +100,18 @@ fn stage(
                 .join_backward(Pos(*at))
                 .map_err(|error| problem::from_step_error(&error))?;
         }
-        Op::ToggleMark { from, to, mark } => {
+        Op::ToggleMark {
+            from,
+            to,
+            mark,
+            active,
+        } => {
             let id = schema
                 .mark_id(mark)
                 .ok_or_else(|| problem::token_problem(mark, "mark"))?;
             let range = Range::new(Pos(*from), Pos(*to));
-            let active = !range.is_empty() && attr::range_has_mark(doc, range, id);
+            let active =
+                active.unwrap_or_else(|| !range.is_empty() && attr::range_has_mark(doc, range, id));
             let result = if active {
                 transaction.remove_mark(range, Mark::new(id))
             } else {
@@ -222,6 +208,39 @@ fn stage(
         }
         Op::SetSelection { selection } => {
             transaction.set_selection(selection_of(*selection));
+        }
+        Op::SetNodeId { at, id } => {
+            transaction
+                .set_node_id(Pos(*at), id.as_deref())
+                .map_err(|error| problem::from_step_error(&error))?;
+        }
+        Op::SetBlockType { at, kind, attrs } => {
+            let kind = schema
+                .node_kind(kind)
+                .ok_or_else(|| problem::token_problem(kind, "node"))?;
+            let mut decoded = Attrs::empty();
+            if let Some(Value::Object(map)) = attrs {
+                for (name, value) in map {
+                    let spec = schema
+                        .node_attr(kind, name)
+                        .ok_or_else(|| problem::attr_problem(name, "node"))?;
+                    let value = attr::value_from_json(&spec.kind, value, name)?;
+                    decoded = decoded
+                        .with(Attr { id: spec.id, value })
+                        .ok_or_else(|| problem::invalid_attr_problem(name, "node"))?;
+                }
+            }
+            transaction
+                .set_block_type(schema, Pos(*at), kind, decoded)
+                .map_err(|error| problem::from_step_error(&error))?;
+        }
+        Op::ReplaceSlice { from, to, slice } => {
+            let text = slice.to_string();
+            let decoded = from_slice_json(&text, schema, &ParseOptions::default())
+                .map_err(|error| problem::from_parse_error(&error))?;
+            transaction
+                .replace(Range::new(Pos(*from), Pos(*to)), decoded)
+                .map_err(|error| problem::from_step_error(&error))?;
         }
     }
     Ok(())

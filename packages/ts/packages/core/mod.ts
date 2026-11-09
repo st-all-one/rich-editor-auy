@@ -11,6 +11,7 @@ import wasmInit, {
   schema_fingerprint as wasmFingerprint,
   split_block as wasmSplitBlock,
   toggle_mark as wasmToggleMark,
+  type Transaction as WasmTransaction,
   validate_a11y as wasmValidateA11y,
   version as wasmVersion,
 } from "./wasm/rich_editor_auy_wasm.js";
@@ -77,6 +78,17 @@ export interface DocView {
 /** Canonical document JSON. */
 export type DocumentJSON = Record<string, unknown>;
 
+/** Slice payload produced by copying a range. */
+export interface SliceJSON {
+  readonly text?: string;
+  readonly runs?: readonly unknown[];
+  readonly blocks?: readonly unknown[];
+  /** One when the first copied block is only partial. */
+  readonly openStart?: 0 | 1;
+  /** One when the last copied block is only partial. */
+  readonly openEnd?: 0 | 1;
+}
+
 /** Serialized table cell reference. */
 export interface CellRefJSON {
   readonly table: number;
@@ -115,6 +127,8 @@ export interface ChangeSetJSON {
   }[];
   readonly selection: boolean;
   readonly full: boolean;
+  readonly insertedBlocks: readonly number[];
+  readonly removedBlocks: readonly number[];
 }
 
 export interface HistoryJSON {
@@ -127,6 +141,52 @@ export interface HistoryJSON {
 }
 
 /** Observable editor state returned by mutations. */
+export interface AppliedJSON {
+  readonly selection: SelectionJSON;
+  readonly version: number;
+  readonly changes: ChangeSetJSON;
+  readonly history: HistoryJSON;
+}
+
+export interface AppliedResultJSON extends AppliedJSON {
+  readonly applied: boolean;
+}
+
+export interface EditorOptions {
+  /** Replacement `[maxGroups, maxBytes]` history budgets. */
+  readonly historyLimits?: readonly [number, number];
+}
+
+export interface ValidationIssueJSON {
+  readonly invariant: string;
+  readonly path: string;
+  readonly position?: number;
+}
+
+export interface ValidationReport {
+  readonly ok: boolean;
+  readonly issues: readonly ValidationIssueJSON[];
+}
+
+export interface A11yIssueJSON {
+  readonly code: string;
+  readonly severity: "error" | "warning";
+  readonly path: string;
+  readonly range: RangeJSON;
+}
+
+export interface A11yReportJSON {
+  readonly ok: boolean;
+  readonly errors: readonly A11yIssueJSON[];
+  readonly warnings: readonly A11yIssueJSON[];
+}
+
+export interface BlockRefJSON {
+  readonly index: number;
+  readonly from: number;
+  readonly to: number;
+}
+
 export interface EditorStateJSON {
   readonly doc: DocumentJSON;
   readonly selection: SelectionJSON;
@@ -216,6 +276,20 @@ export interface SetSelectionOp {
   readonly selection: SelectionJSON;
 }
 
+export interface SetBlockTypeOp {
+  readonly op: "set_block_type";
+  readonly at: number;
+  readonly kind: string;
+  readonly attrs?: AttrMap;
+}
+
+export interface ReplaceSliceOp {
+  readonly op: "replace_slice";
+  readonly from: number;
+  readonly to: number;
+  readonly slice: SliceJSON;
+}
+
 export type BatchOp =
   | InsertTextOp
   | DeleteRangeOp
@@ -228,30 +302,75 @@ export type BatchOp =
   | SetMarkAttrOp
   | ReplaceDocumentOp
   | ReplaceFragmentOp
-  | SetSelectionOp;
+  | SetSelectionOp
+  | SetBlockTypeOp
+  | ReplaceSliceOp;
 
 export interface BatchPayload {
   readonly ops: readonly BatchOp[];
+  /** Document version the batch was computed against. */
+  readonly baseVersion?: number;
+  /** History origin name. */
+  readonly origin?: string;
+  /** Explicit history group identifier. */
+  readonly group?: number;
+  /** Whether the batch enters history; defaults to `true`. */
+  readonly addToHistory?: boolean;
 }
 
-export interface ImportDocumentPayload {
-  readonly mode: "document";
+/** Anchor policy applied to an imported payload. */
+export type IdPolicy = "preserve" | "regenerate" | "reject";
+
+/** Resource limits applied to one import payload. */
+export interface BatchLimits {
+  readonly maxBytes?: number;
+  readonly maxBlocks?: number;
+  readonly maxDepth?: number;
+  readonly maxNodes?: number;
+  readonly maxRunsPerBlock?: number;
+  /** Maximum operations in one `ops` import. */
+  readonly maxOps?: number;
+  /** Maximum table cells in the resulting document. */
+  readonly maxTableCells?: number;
+}
+
+/** Ingestion policy for anchors and resource limits. */
+export interface ImportOptions {
+  readonly idPolicy?: IdPolicy;
+  /** Required by `idPolicy: "regenerate"`. */
+  readonly idSeed?: string;
+  /** Whether the import enters history; defaults to `true`. */
+  readonly addToHistory?: boolean;
+  readonly limits?: BatchLimits;
+}
+
+/** Fields shared by every import payload. */
+export interface ImportEnvelope {
   readonly schema?: string;
+  readonly options?: ImportOptions;
+  /** Echoed back in the report for correlation. */
+  readonly requestId?: string;
+  /** Free-form origin label echoed back in the report. */
+  readonly source?: string;
+  /** Free-form destination label echoed back in the report. */
+  readonly destination?: string;
+}
+
+export interface ImportDocumentPayload extends ImportEnvelope {
+  readonly mode: "document";
   readonly doc: DocumentJSON;
 }
 
-export interface ImportFragmentPayload {
+export interface ImportFragmentPayload extends ImportEnvelope {
   readonly mode: "fragment" | "replace" | "insert";
-  readonly schema?: string;
   readonly fragment: FragmentJSON;
   readonly from?: number;
   readonly to?: number;
   readonly at?: number;
 }
 
-export interface ImportOpsPayload {
+export interface ImportOpsPayload extends ImportEnvelope {
   readonly mode: "ops";
-  readonly schema?: string;
   readonly base_version?: number;
   readonly ops: readonly BatchOp[];
 }
@@ -261,10 +380,25 @@ export type ImportPayload =
   | ImportFragmentPayload
   | ImportOpsPayload;
 
+/** One anchor rewrite produced by `idPolicy: "regenerate"`. */
+export interface IdPair {
+  readonly from: string;
+  readonly to: string;
+}
+
 export interface ImportReport {
   readonly accepted: boolean;
+  /** Top-level blocks after the attempt. */
   readonly blocks: number;
+  /** Top-level blocks accepted from the payload. */
+  readonly acceptedBlocks: number;
   readonly version: number;
+  /** Schema fingerprint the payload was applied against. */
+  readonly schema: string;
+  readonly requestId: string | null;
+  readonly source: string | null;
+  readonly destination: string | null;
+  readonly idMap: readonly IdPair[];
   readonly problems: readonly ProblemDetails[];
   readonly state: EditorStateJSON;
 }
@@ -302,6 +436,32 @@ export interface A11yTreeProvider {
 /** Stateful or stateless source accepted by the DOM adapter. */
 export interface StateProvider extends A11yTreeProvider {
   doc(): Document;
+}
+
+/**
+ * Editor surface the DOM adapter drives.
+ *
+ * Every method is a core operation: the adapter translates DOM input into these calls and never
+ * edits the rendered tree itself. `Editor` satisfies this interface.
+ */
+export interface EditorLike extends StateProvider {
+  apply(payload: BatchPayload | string): AppliedJSON;
+  pasteSlice(at: number, slice: SliceJSON | string): AppliedJSON;
+  replaceSlice(
+    from: number,
+    to: number,
+    slice: SliceJSON | string,
+  ): AppliedJSON;
+  deleteRange(from: number, to: number): AppliedJSON;
+  setSelection(from: number, to: number): AppliedJSON;
+  undo(): AppliedResultJSON;
+  redo(): AppliedResultJSON;
+  beginComposition(from: number, to: number): AppliedJSON;
+  updateComposition(text: string): AppliedJSON;
+  commitComposition(): AppliedJSON;
+  cancelComposition(): AppliedJSON;
+  isComposing(): boolean;
+  version(): number;
 }
 
 /** Parses a structured boundary failure when the thrown value is a problem object. */
@@ -486,6 +646,140 @@ export class EditorState implements StateProvider {
 }
 
 /**
+ * Composable transaction against one document version.
+ *
+ * The editor consumes a transaction on {@link Editor.applyTransaction}; reuse is rejected and a
+ * transaction built against another version fails with a stale-batch problem.
+ */
+export class Transaction {
+  #inner: WasmTransaction;
+
+  /** Builds a transaction around a WASM handle. */
+  constructor(inner: WasmTransaction) {
+    this.#inner = inner;
+  }
+
+  insertText(at: number, text: string): this {
+    guarded(() => this.#inner.insertText(at, text));
+    return this;
+  }
+
+  delete(from: number, to: number): this {
+    guarded(() => this.#inner.delete(from, to));
+    return this;
+  }
+
+  replace(from: number, to: number, slice: SliceJSON): this {
+    guarded(() => this.#inner.replace(from, to, JSON.stringify(slice)));
+    return this;
+  }
+
+  splitBlock(at: number): this {
+    guarded(() => this.#inner.splitBlock(at));
+    return this;
+  }
+
+  joinBackward(at: number): this {
+    guarded(() => this.#inner.joinBackward(at));
+    return this;
+  }
+
+  setBlockType(at: number, kind: string, attrs?: AttrMap): this {
+    guarded(() =>
+      this.#inner.setBlockType(
+        at,
+        kind,
+        attrs ? JSON.stringify(attrs) : undefined,
+      )
+    );
+    return this;
+  }
+
+  addMark(from: number, to: number, mark: string): this {
+    guarded(() => this.#inner.addMark(from, to, mark));
+    return this;
+  }
+
+  removeMark(from: number, to: number, mark: string): this {
+    guarded(() => this.#inner.removeMark(from, to, mark));
+    return this;
+  }
+
+  setNodeAttr(at: number, name: string, value: unknown): this {
+    guarded(() => this.#inner.setNodeAttr(at, name, JSON.stringify(value)));
+    return this;
+  }
+
+  setInlineAttr(
+    from: number,
+    to: number,
+    name: string,
+    value: unknown,
+  ): this {
+    guarded(() =>
+      this.#inner.setInlineAttr(from, to, name, JSON.stringify(value))
+    );
+    return this;
+  }
+
+  setMarkAttr(
+    from: number,
+    to: number,
+    mark: string,
+    name: string,
+    value: unknown,
+  ): this {
+    guarded(() =>
+      this.#inner.setMarkAttr(from, to, mark, name, JSON.stringify(value))
+    );
+    return this;
+  }
+
+  setDocAttr(name: string, value: unknown): this {
+    guarded(() => this.#inner.setDocAttr(name, JSON.stringify(value)));
+    return this;
+  }
+
+  setNodeId(at: number, id: string | null): this {
+    guarded(() => this.#inner.setNodeId(at, id ?? undefined));
+    return this;
+  }
+
+  setSelection(selection: SelectionJSON): this {
+    guarded(() => this.#inner.setSelection(JSON.stringify(selection)));
+    return this;
+  }
+
+  setOrigin(origin: string): this {
+    guarded(() => this.#inner.setOrigin(origin));
+    return this;
+  }
+
+  setGroup(group: number): this {
+    this.#inner.setGroup(group);
+    return this;
+  }
+
+  setAddToHistory(add: boolean): this {
+    this.#inner.setAddToHistory(add);
+    return this;
+  }
+
+  baseVersion(): number {
+    return this.#inner.baseVersion();
+  }
+
+  consumed(): boolean {
+    return this.#inner.consumed();
+  }
+
+  /** Returns the WASM handle for {@link Editor.applyTransaction}. */
+  handle(): WasmTransaction {
+    return this.#inner;
+  }
+}
+
+/**
  * Stateful editor over the canonical document.
  *
  * Mutations are atomic transactions against the full schema; rejected batches leave the
@@ -498,26 +792,33 @@ export class Editor implements StateProvider {
     this.#inner = inner ?? guarded(() => new WasmEditor());
   }
 
-  static fromJSON(json: string): Editor {
-    return new Editor(guarded(() => WasmEditor.fromJSON(json)));
+  static fromJSON(json: string, options?: EditorOptions): Editor {
+    const text = options ? JSON.stringify(options) : undefined;
+    return new Editor(guarded(() => WasmEditor.fromJSON(json, text)));
   }
 
-  static fromEnvelope(bytes: string | Uint8Array): Editor {
+  static fromEnvelope(
+    bytes: string | Uint8Array,
+    options?: EditorOptions,
+  ): Editor {
     const text = typeof bytes === "string"
       ? bytes
       : new TextDecoder().decode(bytes);
-    return new Editor(guarded(() => WasmEditor.fromEnvelope(text)));
+    const optionsText = options ? JSON.stringify(options) : undefined;
+    return new Editor(
+      guarded(() => WasmEditor.fromEnvelope(text, optionsText)),
+    );
   }
 
   /** Applies an atomic operation batch. */
-  apply(payload: BatchPayload | string): EditorStateJSON {
+  apply(payload: BatchPayload | string): AppliedJSON {
     return JSON.parse(
       guarded(() => this.#inner.apply(payloadText(payload))),
-    ) as EditorStateJSON;
+    ) as AppliedJSON;
   }
 
-  /** Validates a batch without mutating the editor. */
-  dryRun(payload: BatchPayload | string): ImportReport {
+  /** Validates a document, fragment, or batch without mutating the editor. */
+  dryRun(payload: BatchPayload | ImportPayload | string): ImportReport {
     return JSON.parse(
       guarded(() => this.#inner.dryRun(payloadText(payload))),
     ) as ImportReport;
@@ -530,16 +831,16 @@ export class Editor implements StateProvider {
     ) as ImportReport;
   }
 
-  undo(): EditorStateJSON & { readonly applied: boolean } {
+  undo(): AppliedResultJSON {
     return JSON.parse(
       guarded(() => this.#inner.undo()),
-    ) as EditorStateJSON & { readonly applied: boolean };
+    ) as AppliedResultJSON;
   }
 
-  redo(): EditorStateJSON & { readonly applied: boolean } {
+  redo(): AppliedResultJSON {
     return JSON.parse(
       guarded(() => this.#inner.redo()),
-    ) as EditorStateJSON & { readonly applied: boolean };
+    ) as AppliedResultJSON;
   }
 
   /** Returns the current document. */
@@ -573,14 +874,251 @@ export class Editor implements StateProvider {
     return this.#inner.schemaFingerprint();
   }
 
-  setSelection(from: number, to: number): EditorStateJSON {
+  /** Starts an IME composition over a range. */
+  beginComposition(from: number, to: number): AppliedJSON {
     return JSON.parse(
-      guarded(() => this.#inner.setSelection(from, to)),
-    ) as EditorStateJSON;
+      guarded(() => this.#inner.beginComposition(from, to)),
+    ) as AppliedJSON;
+  }
+
+  /** Updates the composed text; intermediate states never enter history. */
+  updateComposition(text: string): AppliedJSON {
+    return JSON.parse(
+      guarded(() => this.#inner.updateComposition(text)),
+    ) as AppliedJSON;
+  }
+
+  /** Commits the composition as one undo group. */
+  commitComposition(): AppliedJSON {
+    return JSON.parse(
+      guarded(() => this.#inner.commitComposition()),
+    ) as AppliedJSON;
+  }
+
+  /** Cancels the composition and restores the original text. */
+  cancelComposition(): AppliedJSON {
+    return JSON.parse(
+      guarded(() => this.#inner.cancelComposition()),
+    ) as AppliedJSON;
+  }
+
+  /** Returns whether an IME composition is open. */
+  isComposing(): boolean {
+    return this.#inner.isComposing();
+  }
+
+  /** Copies a range and returns the slice payload. */
+  copyRange(from: number, to: number): SliceJSON {
+    return JSON.parse(
+      guarded(() => this.#inner.copyRange(from, to)),
+    ) as SliceJSON;
+  }
+
+  /** Inserts a slice, replacing the range when one is given. */
+  pasteSlice(at: number, slice: SliceJSON | string): AppliedJSON {
+    const payload = typeof slice === "string" ? slice : JSON.stringify(slice);
+    return JSON.parse(
+      guarded(() => this.#inner.pasteSlice(at, payload)),
+    ) as AppliedJSON;
+  }
+
+  /** Replaces a range with a slice. */
+  replaceSlice(
+    from: number,
+    to: number,
+    slice: SliceJSON | string,
+  ): AppliedJSON {
+    const payload = typeof slice === "string" ? slice : JSON.stringify(slice);
+    return JSON.parse(
+      guarded(() => this.#inner.replaceSlice(from, to, payload)),
+    ) as AppliedJSON;
+  }
+
+  /** Deletes a range with block semantics and returns the applied state. */
+  deleteRange(from: number, to: number): AppliedJSON {
+    return JSON.parse(
+      guarded(() => this.#inner.deleteRange(from, to)),
+    ) as AppliedJSON;
+  }
+
+  /** Copies a range and deletes it. */
+  cutRange(
+    from: number,
+    to: number,
+  ): { readonly slice: SliceJSON; readonly state: AppliedJSON } {
+    return JSON.parse(
+      guarded(() => this.#inner.cutRange(from, to)),
+    ) as { readonly slice: SliceJSON; readonly state: AppliedJSON };
+  }
+
+  setSelection(selection: SelectionJSON): AppliedJSON;
+  setSelection(from: number, to: number): AppliedJSON;
+  setSelection(selection: SelectionJSON | number, to?: number): AppliedJSON {
+    if (typeof selection === "number") {
+      return JSON.parse(
+        guarded(() => this.#inner.setSelection(selection, to ?? selection)),
+      ) as AppliedJSON;
+    }
+    return this.apply({ ops: [{ op: "set_selection", selection }] });
   }
 
   clearHistory(): void {
     this.#inner.clearHistory();
+  }
+
+  /** Starts a transaction against the current version. */
+  transaction(): Transaction {
+    return new Transaction(this.#inner.transaction());
+  }
+
+  /**
+   * Applies and consumes a transaction.
+   *
+   * @throws {DocumentError} with a `stale_batch` or `consumed_transaction` problem when the
+   * version moved or the transaction was already applied.
+   */
+  applyTransaction(transaction: Transaction): AppliedJSON {
+    return JSON.parse(
+      guarded(() => this.#inner.applyTransaction(transaction.handle())),
+    ) as AppliedJSON;
+  }
+
+  /** Inserts text at the selection, replacing it first. */
+  insertText(text: string): AppliedJSON {
+    return JSON.parse(
+      guarded(() => this.#inner.insertText(text)),
+    ) as AppliedJSON;
+  }
+
+  /** Deletes one scalar before the caret. */
+  deleteBackward(): AppliedJSON {
+    return JSON.parse(
+      guarded(() => this.#inner.deleteBackward()),
+    ) as AppliedJSON;
+  }
+
+  /** Deletes one scalar after the caret. */
+  deleteForward(): AppliedJSON {
+    return JSON.parse(
+      guarded(() => this.#inner.deleteForward()),
+    ) as AppliedJSON;
+  }
+
+  /** Deletes the selected range. */
+  deleteSelection(): AppliedJSON {
+    return JSON.parse(
+      guarded(() => this.#inner.deleteSelection()),
+    ) as AppliedJSON;
+  }
+
+  /** Splits the block at the caret. */
+  splitBlock(): AppliedJSON {
+    return JSON.parse(
+      guarded(() => this.#inner.splitBlock()),
+    ) as AppliedJSON;
+  }
+
+  /** Inserts a hard break at the selection. */
+  insertHardBreak(): AppliedJSON {
+    return JSON.parse(
+      guarded(() => this.#inner.insertHardBreak()),
+    ) as AppliedJSON;
+  }
+
+  /** Changes the type of the block at the caret. */
+  setBlockType(kind: string, attrs?: AttrMap): AppliedJSON {
+    return JSON.parse(
+      guarded(() =>
+        this.#inner.setBlockType(
+          kind,
+          attrs ? JSON.stringify(attrs) : undefined,
+        )
+      ),
+    ) as AppliedJSON;
+  }
+
+  /** Toggles a mark on the selection. */
+  toggleMark(name: string, attrs?: AttrMap): AppliedJSON {
+    return JSON.parse(
+      guarded(() =>
+        this.#inner.toggleMark(name, attrs ? JSON.stringify(attrs) : undefined)
+      ),
+    ) as AppliedJSON;
+  }
+
+  /** Sets one attribute on the block at the caret. */
+  setNodeAttr(name: string, value: unknown): AppliedJSON {
+    return JSON.parse(
+      guarded(() => this.#inner.setNodeAttr(name, JSON.stringify(value))),
+    ) as AppliedJSON;
+  }
+
+  /** Sets one attribute on the atom covered by the selection. */
+  setInlineAttr(name: string, value: unknown): AppliedJSON {
+    return JSON.parse(
+      guarded(() => this.#inner.setInlineAttr(name, JSON.stringify(value))),
+    ) as AppliedJSON;
+  }
+
+  /** Sets one document-root attribute. */
+  setDocAttr(name: string, value: unknown): AppliedJSON {
+    return JSON.parse(
+      guarded(() => this.#inner.setDocAttr(name, JSON.stringify(value))),
+    ) as AppliedJSON;
+  }
+
+  /** Sets or clears the stable identifier of a block. */
+  setNodeId(at: number, id: string | null): AppliedJSON {
+    return JSON.parse(
+      guarded(() => this.#inner.setNodeId(at, id ?? undefined)),
+    ) as AppliedJSON;
+  }
+
+  /** Returns whether undo is available. */
+  canUndo(): boolean {
+    return this.#inner.canUndo();
+  }
+
+  /** Returns whether redo is available. */
+  canRedo(): boolean {
+    return this.#inner.canRedo();
+  }
+
+  /** Returns the structural validation report. */
+  validate(): ValidationReport {
+    return JSON.parse(this.#inner.validate()) as ValidationReport;
+  }
+
+  /** Returns the accessibility report. */
+  validateA11yReport(): A11yReportJSON {
+    return JSON.parse(this.#inner.validateA11y()) as A11yReportJSON;
+  }
+
+  /** Converts a document position to UTF-16 code units. */
+  posToUtf16(pos: number): number | undefined {
+    return this.#inner.posToUtf16(pos);
+  }
+
+  /** Converts a UTF-16 offset inside a block to a document position. */
+  utf16ToPos(block: number, utf16: number): number | undefined {
+    return this.#inner.utf16ToPos(block, utf16);
+  }
+
+  /** Snaps a position to the previous scalar boundary. */
+  snapToScalar(pos: number): number {
+    return this.#inner.snapToScalar(pos);
+  }
+
+  /** Returns the block containing a position. */
+  blockAt(pos: number): BlockRefJSON | undefined {
+    const value = this.#inner.blockAt(pos);
+    return value === undefined ? undefined : JSON.parse(value) as BlockRefJSON;
+  }
+
+  /** Returns the range of one top-level block. */
+  blockRange(index: number): RangeJSON | undefined {
+    const value = this.#inner.blockRange(index);
+    return value === undefined ? undefined : JSON.parse(value) as RangeJSON;
   }
 
   a11yTree(): A11yNode {

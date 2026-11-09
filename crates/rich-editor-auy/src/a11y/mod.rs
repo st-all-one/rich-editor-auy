@@ -1,5 +1,6 @@
 //! Semantic accessibility projections and validation.
 
+mod attrs;
 mod build;
 pub mod codes;
 mod json;

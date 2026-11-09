@@ -22,7 +22,10 @@
 
 extern crate alloc;
 
+mod hex;
+
 pub mod a11y;
+pub mod clipboard;
 pub mod command;
 pub mod error;
 pub mod input;

@@ -15,13 +15,22 @@ Deno/JSR, adaptador DOM, pacote Composer e CLI. `make check` (fmt, clippy, teste
 a11y, file-length, links, zero-style, package) é o gate local; `make check-ecosystem` cobre Deno e
 PHP quando as ferramentas existem.
 
-F0–F3.5 estão materializados; `schema!` é um front-end real (subconjunto documentado), o wire valida
-surrogates/limites, os blocos de topo usam chunks de 128 (flat até 128 blocos); `apply_owned` muta quando o snapshot é único para evitar cópia O(n) e a
-árvore a11y carrega `DocPath`. Lacunas conhecidas estão em
-`DIVERGENCES.md`. F4 tem benchmarks `criterion`, testes de alocação/memória e um gate de
-consultas; `iai-callgrind`, baseline de instruções, fuzz executado e calibração de desempenho ainda
-são pendências registradas em [`DIVERGENCES.md`](DIVERGENCES.md). PHP não foi executado neste host
-por ausência de `php`/`composer`; o CI tem o job correspondente.
+F0–F4 estão materializados; `schema!` é um front-end real (subconjunto documentado, com `attrs`,
+`a11y`, acessores tipados e `trybuild`), o wire valida surrogates/limites, os blocos de topo usam
+chunks de 128 (flat até 128 blocos); `apply_owned` muta quando o snapshot é único e a árvore a11y
+carrega `DocPath`. O clipboard é do core (`Doc::slice`/`insert_slice`/`replace_slice`/
+`delete_range` + wire do `Slice`), o IME é um grupo de histórico, e o adaptador DOM mapeia seleção,
+intents e anúncios (`positions.ts`, `selection.ts`, `input.ts`, `announce.ts`).
+
+F4 mede com `criterion` (informativo) e `iai-callgrind` (gate de 5% em `Ir`, `soft_limits`), com
+testes de alocação/memória, `fuzz` em `Schema::full` (quatro alvos, 60 s cada no CI) e relatório em
+[`bench/ULTIMO.md`](bench/ULTIMO.md). Lacunas e pendências vivem em
+[`DIVERGENCES.md`](DIVERGENCES.md). O gate do PHP roda em Docker (`make php`) porque o host não tem
+`php`/`composer`; `make check-ecosystem` usa o `deno` local e o Docker.
+
+Ferramentas locais: `wasm-bindgen` e `wasm-opt` são necessários só para `make wasm`; o gate
+`iai` em contêiner precisa de `docker run --security-opt seccomp=unconfined` (o `setarch` do runner
+usa `personality()`).
 
 Qualquer mudança de comportamento ou desvio do plano entra em `DIVERGENCES.md` com motivo,
 impacto e próximo passo. Este guia descreve o contrato permanente.
@@ -99,7 +108,7 @@ Não misture idiomas no mesmo artefato. Um comentário em português no `src/` �
 
 ```text
 crates/rich-editor-auy/          # core implementado: model, schema, pos, step, state, history,
-                                 # command, input, wire, math, motion, a11y, error
+                                 # command, input, clipboard, wire, math, motion, a11y, error
 crates/rich-editor-auy-macros/   # schema! (proc-macro opcional)
 crates/rich-editor-auy-wasm/     # wasm-bindgen + artefato WASM (não é o core)
 crates/rich-editor-auy-html/     # pós-MVP: import/export + ImportReport

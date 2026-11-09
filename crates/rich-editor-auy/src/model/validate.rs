@@ -126,7 +126,9 @@ fn validate_block(
             if spec.atom || !accepts_text {
                 report.issues.push(issue("I2", path, Some(start)));
             }
-            let mut previous = None;
+            // Compare against the previous item in place; cloning a `MarkSet` per run would
+            // allocate on the validation hot path.
+            let mut previous: Option<&MarkSet> = None;
             for item in text.items() {
                 match item {
                     InlineItem::Text(run) => {
@@ -136,13 +138,10 @@ fn validate_block(
                         if run.text.len() > MAX_RUN_BYTES {
                             report.issues.push(issue("I4", path, Some(start)));
                         }
-                        if previous
-                            .as_ref()
-                            .is_some_and(|marks: &MarkSet| marks == &run.marks)
-                        {
+                        if previous.is_some_and(|marks| marks == &run.marks) {
                             report.issues.push(issue("I4", path, Some(start)));
                         }
-                        previous = Some(run.marks.clone());
+                        previous = Some(&run.marks);
                         if !run.marks.is_empty() {
                             validate_marks(schema, block.kind(), &run.marks, path, start, report);
                         }

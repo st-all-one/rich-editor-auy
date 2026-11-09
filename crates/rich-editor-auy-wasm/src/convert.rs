@@ -6,6 +6,7 @@ use rich_editor_auy::pos::Range;
 use rich_editor_auy::state::{AppliedInfo, ChangeSet, HistoryInfo, Origin, Selection};
 use serde_json::{Value, json};
 
+use crate::ids::IdPair;
 use crate::problem::problem_value;
 
 /// Saturates a durable version into the JavaScript-safe `u32` range.
@@ -86,6 +87,8 @@ pub(crate) fn changes_value(changes: &ChangeSet) -> Value {
         "ranges": ranges,
         "selection": changes.selection,
         "full": changes.full,
+        "insertedBlocks": changes.inserted_blocks,
+        "removedBlocks": changes.removed_blocks,
     })
 }
 
@@ -110,9 +113,9 @@ pub(crate) fn state_json(doc_json: &str, selection: Selection, version: u32) -> 
 }
 
 /// Writes an applied result including changes and history.
-pub(crate) fn applied_json(doc_json: &str, info: &AppliedInfo) -> String {
+pub(crate) fn applied_json(info: &AppliedInfo) -> String {
     format!(
-        "{{\"doc\":{doc_json},\"selection\":{},\"version\":{},\"changes\":{},\"history\":{}}}",
+        "{{\"selection\":{},\"version\":{},\"changes\":{},\"history\":{}}}",
         selection_value(info.selection),
         version_u32(info.version),
         changes_value(&info.changes),
@@ -120,16 +123,25 @@ pub(crate) fn applied_json(doc_json: &str, info: &AppliedInfo) -> String {
     )
 }
 
-/// Writes an undo or redo result with an explicit `applied` flag.
-pub(crate) fn undo_json(
-    doc_json: &str,
-    info: Option<&AppliedInfo>,
+/// Writes an applied result that changed no document content.
+pub(crate) fn empty_applied_json(
     selection: Selection,
     version: u32,
+    history: HistoryInfo,
 ) -> String {
+    format!(
+        "{{\"selection\":{},\"version\":{version},\"changes\":{},\"history\":{}}}",
+        selection_value(selection),
+        changes_value(&ChangeSet::empty()),
+        history_value(history),
+    )
+}
+
+/// Writes an undo or redo result with an explicit `applied` flag.
+pub(crate) fn undo_json(info: Option<&AppliedInfo>, selection: Selection, version: u32) -> String {
     match info {
         Some(info) => format!(
-            "{{\"applied\":true,\"doc\":{doc_json},\"selection\":{},\"version\":{},\
+            "{{\"applied\":true,\"selection\":{},\"version\":{},\
              \"changes\":{},\"history\":{}}}",
             selection_value(info.selection),
             version_u32(info.version),
@@ -137,7 +149,7 @@ pub(crate) fn undo_json(
             history_value(info.history),
         ),
         None => format!(
-            "{{\"applied\":false,\"doc\":{doc_json},\"selection\":{},\"version\":{version}}}",
+            "{{\"applied\":false,\"selection\":{},\"version\":{version}}}",
             selection_value(selection)
         ),
     }
@@ -149,27 +161,59 @@ pub(crate) struct ImportReport {
     pub(crate) accepted: bool,
     /// Top-level block count after the attempt.
     pub(crate) blocks: u32,
+    /// Top-level blocks accepted from the payload.
+    pub(crate) accepted_blocks: u32,
     /// Document version after the attempt.
     pub(crate) version: u32,
+    /// Schema fingerprint the payload was applied against.
+    pub(crate) schema: String,
+    /// Host correlation identifier echoed from the payload.
+    pub(crate) request_id: Option<String>,
+    /// Free-form origin label echoed from the payload.
+    pub(crate) source: Option<String>,
+    /// Free-form destination label echoed from the payload.
+    pub(crate) destination: Option<String>,
+    /// Anchor rewrites performed by the `regenerate` policy.
+    pub(crate) id_map: Vec<IdPair>,
     /// Every rejection, in evaluation order.
     pub(crate) problems: Vec<ProblemDetails>,
 }
 
 impl ImportReport {
-    /// Writes `{accepted, blocks, version, problems, state}`.
+    /// Writes the report and the resulting state.
     pub(crate) fn to_json(&self, doc_json: &str, selection: Selection) -> String {
         let problems = self
             .problems
             .iter()
             .map(problem_value)
             .collect::<Vec<Value>>();
+        let id_map = self
+            .id_map
+            .iter()
+            .map(|pair| json!({"from": pair.from, "to": pair.to}))
+            .collect::<Vec<Value>>();
+        let request_id = self
+            .request_id
+            .as_ref()
+            .map_or(Value::Null, |value| Value::String(value.clone()));
+        let accepted = self.accepted;
+        let blocks = self.blocks;
+        let accepted_blocks = self.accepted_blocks;
+        let version = self.version;
+        let schema = Value::String(self.schema.clone());
+        let id_map = Value::Array(id_map);
+        let problems = Value::Array(problems);
+        let state = state_json(doc_json, selection, version);
+        let source = self
+            .source
+            .as_ref()
+            .map_or(Value::Null, |value| Value::String(value.clone()));
+        let destination = self
+            .destination
+            .as_ref()
+            .map_or(Value::Null, |value| Value::String(value.clone()));
         format!(
-            "{{\"accepted\":{},\"blocks\":{},\"version\":{},\"problems\":{},\"state\":{}}}",
-            self.accepted,
-            self.blocks,
-            self.version,
-            Value::Array(problems),
-            state_json(doc_json, selection, self.version),
+            "{{\"accepted\":{accepted},\"blocks\":{blocks},\"acceptedBlocks\":{accepted_blocks},\"version\":{version},\"schema\":{schema},\"requestId\":{request_id},\"source\":{source},\"destination\":{destination},\"idMap\":{id_map},\"problems\":{problems},\"state\":{state}}}"
         )
     }
 }

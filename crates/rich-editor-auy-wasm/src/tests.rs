@@ -6,6 +6,7 @@ use serde_json::json;
 
 use crate::attr;
 use crate::dto::{BatchPayload, ImportPayload, Op};
+use crate::ids::IdPolicy;
 use crate::problem;
 
 #[test]
@@ -101,4 +102,65 @@ fn decodes_declared_attribute_values() {
     );
     assert!(matches!(reference, Ok(AttrValue::Ref(_))));
     assert!(attr::value_from_json(&AttrType::Ref, &json!({"node": "n1"}), "target").is_err());
+}
+
+#[test]
+fn id_policy_defaults_to_preserve_and_requires_a_seed() {
+    assert!(matches!(
+        IdPolicy::parse(None, None),
+        Ok(IdPolicy::Preserve)
+    ));
+    assert!(matches!(
+        IdPolicy::parse(Some("reject"), None),
+        Ok(IdPolicy::Reject)
+    ));
+    assert!(IdPolicy::parse(Some("regenerate"), None).is_err());
+    assert!(IdPolicy::parse(Some("regenerate"), Some("")).is_err());
+    assert!(matches!(
+        IdPolicy::parse(Some("regenerate"), Some("seed")),
+        Ok(IdPolicy::Regenerate(seed)) if seed == "seed"
+    ));
+    assert!(IdPolicy::parse(Some("shuffle"), None).is_err());
+}
+
+#[test]
+fn parses_import_options_and_request_id() {
+    let value = json!({
+        "mode": "document",
+        "doc": {"type": "doc", "content": []},
+        "requestId": "req-1",
+        "source": "panel-a",
+        "destination": "note-9",
+        "options": {
+            "idPolicy": "regenerate",
+            "idSeed": "s",
+            "limits": {"maxBlocks": 4, "maxDepth": 8}
+        }
+    });
+    let parsed = serde_json::from_value::<ImportPayload>(value);
+    assert!(parsed.is_ok());
+    let Ok(payload) = parsed else {
+        return;
+    };
+    assert_eq!(payload.request_id.as_deref(), Some("req-1"));
+    assert_eq!(payload.source.as_deref(), Some("panel-a"));
+    assert_eq!(payload.destination.as_deref(), Some("note-9"));
+    assert_eq!(payload.options.id_policy.as_deref(), Some("regenerate"));
+    assert_eq!(payload.options.id_seed.as_deref(), Some("s"));
+    assert_eq!(
+        payload
+            .options
+            .limits
+            .as_ref()
+            .and_then(|limits| limits.max_blocks),
+        Some(4)
+    );
+    assert_eq!(
+        payload
+            .options
+            .limits
+            .as_ref()
+            .and_then(|limits| limits.max_depth),
+        Some(8)
+    );
 }

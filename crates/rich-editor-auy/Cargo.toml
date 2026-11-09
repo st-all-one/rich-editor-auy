@@ -15,12 +15,16 @@ include = ["src/**/*", "tests/**/*", "Cargo.toml", "README.md", "LICENSE-MIT", "
 
 [features]
 visits = []
+# Legacy basic schema kept only for migration fixtures and older benchmarks.
+migration = []
 
 [dependencies]
 blake3.workspace = true
 
 [dev-dependencies]
 rich-editor-auy-macros = { path = "../rich-editor-auy-macros" }
+rich-editor-auy-testkit = { path = "../rich-editor-auy-testkit" }
+trybuild = "1"
 
 [lints]
 workspace = true

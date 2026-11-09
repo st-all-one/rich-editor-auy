@@ -73,6 +73,22 @@ impl NodeId {
         valid_id(value).then(|| Self(Box::from(value)))
     }
 
+    /// Derives a deterministic anchor from a seed and a structural path.
+    ///
+    /// The digest is BLAKE3 with the `rich-editor-auy/node-id/v1` derive key, so the same seed
+    /// and path always produce the same 64-character identifier. Imports use it to reassign
+    /// anchors without a random source.
+    #[must_use]
+    pub fn derived(seed: &str, path: &[u32]) -> Option<Self> {
+        let mut hasher = blake3::Hasher::new_derive_key("rich-editor-auy/node-id/v1");
+        hasher.update(seed.as_bytes());
+        for index in path {
+            hasher.update(b"/");
+            hasher.update(&index.to_be_bytes());
+        }
+        Self::new(&crate::hex::hex(hasher.finalize().as_bytes()))
+    }
+
     /// Returns the identifier text.
     #[must_use]
     pub fn as_str(&self) -> &str {

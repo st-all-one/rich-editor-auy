@@ -6,8 +6,12 @@
 
 mod apply_owned;
 mod change;
+mod change_builder;
 mod composition;
 mod editor;
+mod editor_clipboard;
+mod editor_commands;
+mod editor_options;
 mod history;
 mod selection;
 mod table;
@@ -16,6 +20,7 @@ mod transaction;
 mod transaction_attrs;
 mod transaction_join;
 mod transaction_meta;
+mod transaction_structure;
 
 pub use change::{ChangeSet, RangeChange};
 pub use composition::{CompositionEvent, CompositionId};
@@ -194,8 +199,12 @@ impl EditorState {
                 bytes,
             });
         }
-        let changes =
-            ChangeSet::from_steps(&state.doc, transaction.steps(), selection != self.selection);
+        let changes = ChangeSet::from_steps(
+            &self.doc,
+            &state.doc,
+            transaction.steps(),
+            selection != self.selection,
+        );
         Ok(Applied { state, changes })
     }
 
@@ -218,14 +227,14 @@ impl EditorState {
     /// Returns an error when an inverse step no longer applies.
     pub fn undo(&self) -> Result<Option<Applied>, ApplyError> {
         let mut history = self.history.clone();
-        let Some((doc, selection, steps)) = history.undo(&self.doc, &self.schema)? else {
+        let Some((doc, selection, group)) = history.undo(&self.doc, &self.schema)? else {
             return Ok(None);
         };
         let mut state = self.clone();
         state.doc = doc;
         state.selection = selection;
         state.history = history;
-        let changes = ChangeSet::from_steps(&state.doc, &steps, true);
+        let changes = ChangeSet::from_steps(&self.doc, &state.doc, &group.inverse, true);
         Ok(Some(Applied { state, changes }))
     }
 
@@ -236,14 +245,14 @@ impl EditorState {
     /// Returns an error when a step no longer applies.
     pub fn redo(&self) -> Result<Option<Applied>, ApplyError> {
         let mut history = self.history.clone();
-        let Some((doc, selection, steps)) = history.redo(&self.doc, &self.schema)? else {
+        let Some((doc, selection, group)) = history.redo(&self.doc, &self.schema)? else {
             return Ok(None);
         };
         let mut state = self.clone();
         state.doc = doc;
         state.selection = selection;
         state.history = history;
-        let changes = ChangeSet::from_steps(&state.doc, &steps, true);
+        let changes = ChangeSet::from_steps(&self.doc, &state.doc, &group.steps, true);
         Ok(Some(Applied { state, changes }))
     }
 

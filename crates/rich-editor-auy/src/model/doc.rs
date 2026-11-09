@@ -130,6 +130,17 @@ impl Doc {
         Self::new(attrs, blocks, &crate::Limits::default())
     }
 
+    /// Creates a snapshot from blocks that the caller has already measured.
+    ///
+    /// The decoder enforces node, depth, run, and byte budgets while it parses, so it does not
+    /// need [`Doc::new`]'s second full traversal.
+    pub(crate) fn from_decoded(attrs: Attrs, blocks: Vec<Arc<Block>>) -> Self {
+        Self(Arc::new(DocInner {
+            attrs,
+            chunks: Chunks::new(blocks),
+        }))
+    }
+
     /// Creates a snapshot with one top-level block replaced.
     ///
     /// The caller guarantees that the replacement preserves node count; text edits and attribute

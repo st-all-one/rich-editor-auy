@@ -96,21 +96,21 @@ impl Doc {
     pub fn a11y_tree(&self, schema: &Schema) -> A11yTree {
         let lang = super::build::doc_attr(schema, self.attrs(), "lang");
         let dir = super::build::doc_attr(schema, self.attrs(), "dir");
-        let mut children = Vec::new();
+        let root_path = DocPath::root();
+        let projection = super::build::Projection::new(schema, lang.clone(), dir.clone());
+        let mut children = Vec::with_capacity(self.blocks().len());
         let mut offset = 0_u32;
         for (index, block) in self.blocks().iter().enumerate() {
-            children.extend(super::build::block_nodes(
-                schema,
+            projection.block_into(
                 block,
                 Pos(offset),
-                DocPath::root().child(u32::try_from(index).unwrap_or(u32::MAX)),
-                lang.clone(),
-                dir.clone(),
-            ));
+                root_path.child(u32::try_from(index).unwrap_or(u32::MAX)),
+                &mut children,
+            );
             offset = offset.saturating_add(block.size().0);
         }
         let root = A11yNode {
-            path: DocPath::root(),
+            path: root_path,
             id: None,
             role: A11yRole::Document,
             name: None,

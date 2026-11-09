@@ -44,7 +44,7 @@ pub struct EditorOptions {
 #[derive(Clone, Debug)]
 pub struct Editor {
     pub(super) state: EditorState,
-    version: u64,
+    pub(super) version: u64,
 }
 
 impl Editor {
@@ -55,37 +55,6 @@ impl Editor {
     /// Returns a schema error only if the full preset is inconsistent.
     pub fn new() -> Result<Self, SchemaError> {
         Self::with_options(EditorOptions::default())
-    }
-
-    /// Creates an empty editor with explicit construction options.
-    ///
-    /// # Errors
-    ///
-    /// Returns a schema error only if the full preset is inconsistent.
-    pub fn with_options(options: EditorOptions) -> Result<Self, SchemaError> {
-        let schema = Arc::new(Schema::full()?);
-        let state = EditorState::new(schema)?;
-        let state = match options.history_limits {
-            Some((max_groups, max_bytes)) => state.with_history_limits(max_groups, max_bytes),
-            None => state,
-        };
-        Ok(Self { state, version: 0 })
-    }
-
-    /// Creates an editor around an existing document.
-    ///
-    /// The document must already conform to the complete schema; this constructor does not
-    /// re-validate it.
-    ///
-    /// # Errors
-    ///
-    /// Returns a schema error only if the full preset is inconsistent.
-    pub fn from_doc(doc: Doc) -> Result<Self, SchemaError> {
-        let schema = Arc::new(Schema::full()?);
-        Ok(Self {
-            state: EditorState::from_doc(schema, doc),
-            version: 0,
-        })
     }
 
     /// Creates an editor from canonical document JSON using the complete schema.
@@ -247,7 +216,7 @@ impl Editor {
         self.replace_document(replacement)
     }
 
-    fn info(&self, changes: ChangeSet) -> AppliedInfo {
+    pub(super) fn info(&self, changes: ChangeSet) -> AppliedInfo {
         AppliedInfo {
             version: self.version,
             changes,

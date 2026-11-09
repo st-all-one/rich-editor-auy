@@ -12,8 +12,9 @@ use alloc::boxed::Box;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 
+use crate::Limits;
 use crate::error::ParseError;
-use crate::model::{Attr, AttrValue, Attrs, DocId, Mark, MarkSet, NodeId, RefTarget, VersionTag};
+use crate::model::{Attr, AttrValue, Attrs, DocId, NodeId, RefTarget, VersionTag};
 use crate::pos::{Pos, Range};
 use crate::schema::{AttrSpec, AttrType, Schema};
 
@@ -48,6 +49,7 @@ pub(crate) fn decode_attrs(
     value: Option<&JsonValue>,
     specs: &[AttrSpec],
     path: DecodePath<'_>,
+    limits: &Limits,
 ) -> Result<Attrs, ParseError> {
     let Some(value) = value else {
         return Ok(Attrs::empty());
@@ -59,40 +61,16 @@ pub(crate) fn decode_attrs(
             path: path.boxed(),
         });
     };
-    let mut attrs = Vec::new();
-    for (name, value) in members {
-        let Some(spec) = specs.iter().find(|spec| *spec.name == **name) else {
-            return Err(ParseError {
-                code: Box::from("unknown_attr"),
-                offset: value.start(),
-                path: path.boxed(),
-            });
-        };
-        let decoded = decode_value(value, &spec.kind).map_err(|error| ParseError {
+    if members.len() > usize::from(limits.max_attrs_per_node) {
+        return Err(ParseError {
+            code: Box::from("limit"),
             offset: value.start(),
-            ..error
-        })?;
-        if crate::schema::is_url_attr(&spec.name)
-            && let AttrValue::Str(url) = &decoded
-            && crate::schema::is_unsafe_url(url)
-        {
-            return Err(ParseError {
-                code: Box::from("unsafe_url"),
-                offset: value.start(),
-                path: path.boxed(),
-            });
-        }
-        if !Schema::value_matches(&spec.kind, &decoded) {
-            return Err(ParseError {
-                code: Box::from("attr_type"),
-                offset: value.start(),
-                path: path.boxed(),
-            });
-        }
-        attrs.push(Attr {
-            id: spec.id,
-            value: decoded,
+            path: path.boxed(),
         });
+    }
+    let mut attrs = Vec::with_capacity(members.len());
+    for (name, member) in members {
+        attrs.push(decode_member(member, name, specs, path, limits)?);
     }
     for spec in specs {
         if spec.required && spec.default.is_none() && !attrs.iter().any(|attr| attr.id == spec.id) {
@@ -110,12 +88,68 @@ pub(crate) fn decode_attrs(
     })
 }
 
-fn decode_value(value: &JsonValue, kind: &AttrType) -> Result<AttrValue, ParseError> {
+/// Decodes one declared attribute, checking its type, URL safety, and limits.
+fn decode_member(
+    value: &JsonValue,
+    name: &str,
+    specs: &[AttrSpec],
+    path: DecodePath<'_>,
+    limits: &Limits,
+) -> Result<Attr, ParseError> {
+    let Some(spec) = specs.iter().find(|spec| *spec.name == *name) else {
+        return Err(ParseError {
+            code: Box::from("unknown_attr"),
+            offset: value.start(),
+            path: path.boxed(),
+        });
+    };
+    let decoded = decode_value(value, &spec.kind, limits, 0).map_err(|error| ParseError {
+        offset: value.start(),
+        ..error
+    })?;
+    if crate::schema::is_url_attr(&spec.name)
+        && let AttrValue::Str(url) = &decoded
+        && crate::schema::is_unsafe_url(url)
+    {
+        return Err(ParseError {
+            code: Box::from("unsafe_url"),
+            offset: value.start(),
+            path: path.boxed(),
+        });
+    }
+    if !Schema::value_matches(&spec.kind, &decoded) {
+        return Err(ParseError {
+            code: Box::from("attr_type"),
+            offset: value.start(),
+            path: path.boxed(),
+        });
+    }
+    Ok(Attr {
+        id: spec.id,
+        value: decoded,
+    })
+}
+
+/// Decodes one attribute value, rejecting oversized strings and over-deep nesting before
+/// any `Box`/`Vec` is built.
+pub(super) fn decode_value(
+    value: &JsonValue,
+    kind: &AttrType,
+    limits: &Limits,
+    depth: u8,
+) -> Result<AttrValue, ParseError> {
+    if u32::from(depth) > u32::from(limits.max_depth) {
+        return Err(ParseError::new("limit", value.start()));
+    }
+    let next = depth.saturating_add(1);
     match kind {
-        AttrType::Str | AttrType::Enum(_) => value
-            .as_str()
-            .map(|text| AttrValue::Str(Box::from(text)))
-            .ok_or_else(|| ParseError::new("expected_string", 0)),
+        AttrType::Str | AttrType::Enum(_) => {
+            let text = value
+                .as_str()
+                .ok_or_else(|| ParseError::new("expected_string", 0))?;
+            check_string(text.len(), limits, value.start())?;
+            Ok(AttrValue::Str(Box::from(text)))
+        }
         AttrType::Int { .. } => value
             .as_i64()
             .map(AttrValue::Int)
@@ -129,9 +163,9 @@ fn decode_value(value: &JsonValue, kind: &AttrType) -> Result<AttrValue, ParseEr
             let JsonKind::Array(values) = value.kind() else {
                 return Err(ParseError::new("expected_array", 0));
             };
-            let mut items = Vec::new();
+            let mut items = Vec::with_capacity(values.len());
             for item in values {
-                items.push(decode_value(item, inner)?);
+                items.push(decode_value(item, inner, limits, next)?);
             }
             Ok(AttrValue::Array(items.into_boxed_slice()))
         }
@@ -139,14 +173,23 @@ fn decode_value(value: &JsonValue, kind: &AttrType) -> Result<AttrValue, ParseEr
             let JsonKind::Object(members) = value.kind() else {
                 return Err(ParseError::new("expected_map", 0));
             };
-            let mut entries = Vec::new();
+            let mut entries = Vec::with_capacity(members.len());
             for (name, member) in members {
-                entries.push((name.clone(), decode_value(member, inner)?));
+                check_string(name.len(), limits, member.start())?;
+                entries.push((name.clone(), decode_value(member, inner, limits, next)?));
             }
             AttrValue::map(entries).ok_or_else(|| ParseError::new("duplicate_map_key", 0))
         }
-        AttrType::Any => decode_any(value),
+        AttrType::Any => decode_any(value, limits, next),
     }
+}
+
+/// Rejects an attribute string that exceeds the configured byte budget.
+fn check_string(len: usize, limits: &Limits, offset: u32) -> Result<(), ParseError> {
+    if u32::try_from(len).unwrap_or(u32::MAX) > limits.max_attr_string_bytes {
+        return Err(ParseError::new("limit", offset));
+    }
+    Ok(())
 }
 
 fn decode_ref(value: &JsonValue) -> Result<RefTarget, ParseError> {
@@ -201,16 +244,23 @@ fn decode_ref(value: &JsonValue) -> Result<RefTarget, ParseError> {
     })
 }
 
-fn decode_any(value: &JsonValue) -> Result<AttrValue, ParseError> {
+fn decode_any(value: &JsonValue, limits: &Limits, depth: u8) -> Result<AttrValue, ParseError> {
+    if u32::from(depth) > u32::from(limits.max_depth) {
+        return Err(ParseError::new("limit", value.start()));
+    }
+    let next = depth.saturating_add(1);
     match value.kind() {
         JsonKind::Null => Ok(AttrValue::Null),
         JsonKind::Bool(flag) => Ok(AttrValue::Bool(*flag)),
         JsonKind::Int(number) => Ok(AttrValue::Int(*number)),
-        JsonKind::Str(text) => Ok(AttrValue::Str(text.clone())),
+        JsonKind::Str(text) => {
+            check_string(text.len(), limits, value.start())?;
+            Ok(AttrValue::Str(text.clone()))
+        }
         JsonKind::Array(values) => {
-            let mut out = Vec::new();
+            let mut out = Vec::with_capacity(values.len());
             for value in values {
-                out.push(decode_any(value)?);
+                out.push(decode_any(value, limits, next)?);
             }
             Ok(AttrValue::Array(out.into_boxed_slice()))
         }
@@ -218,61 +268,13 @@ fn decode_any(value: &JsonValue) -> Result<AttrValue, ParseError> {
             if value.get("doc").is_some() {
                 decode_ref(value).map(AttrValue::Ref)
             } else {
-                let mut out = Vec::new();
+                let mut out = Vec::with_capacity(members.len());
                 for (name, member) in members {
-                    out.push((name.clone(), decode_any(member)?));
+                    check_string(name.len(), limits, member.start())?;
+                    out.push((name.clone(), decode_any(member, limits, next)?));
                 }
                 AttrValue::map(out).ok_or_else(|| ParseError::new("duplicate_map_key", 0))
             }
         }
     }
-}
-
-pub(crate) fn decode_marks(
-    value: Option<&JsonValue>,
-    schema: &Schema,
-) -> Result<MarkSet, ParseError> {
-    let Some(value) = value else {
-        return Ok(MarkSet::empty());
-    };
-    let values = value
-        .as_array()
-        .ok_or_else(|| ParseError::new("marks_not_array", value.start()))?;
-    let mut marks = MarkSet::empty();
-    for value in values {
-        let name = value
-            .get("type")
-            .and_then(JsonValue::as_str)
-            .ok_or_else(|| ParseError::new("missing_mark_type", value.start()))?;
-        let id = schema
-            .mark_id(name)
-            .ok_or_else(|| ParseError::new("unknown_mark", value.start()))?;
-        let specs = schema.mark(id).map_or(&[][..], |spec| &spec.attrs);
-        let nested = value.get("attrs");
-        let mut decoded = Vec::new();
-        for spec in specs {
-            let raw = nested
-                .and_then(|attrs| attrs.get(&spec.name))
-                .or_else(|| value.get(&spec.name));
-            if let Some(raw) = raw {
-                let target = decode_value(raw, &spec.kind).map_err(|error| ParseError {
-                    offset: raw.start(),
-                    ..error
-                })?;
-                if !Schema::value_matches(&spec.kind, &target) {
-                    return Err(ParseError::new("mark_attr_type", raw.start()));
-                }
-                decoded.push(Attr {
-                    id: spec.id,
-                    value: target,
-                });
-            } else if spec.required && spec.default.is_none() {
-                return Err(ParseError::new("required_mark_attr", value.start()));
-            }
-        }
-        let attrs = Attrs::new(decoded)
-            .ok_or_else(|| ParseError::new("duplicate_mark_attr", value.start()))?;
-        marks = marks.with_mark(Mark { id, attrs });
-    }
-    Ok(marks)
 }

@@ -1,22 +1,26 @@
 //! Canonical JSON wire format and envelope.
 
 mod attrs;
+mod budget;
 mod envelope;
 mod fragment;
 pub(crate) mod json;
 mod json_escape;
 mod json_hex;
 pub(crate) mod json_parser;
+mod marks;
 mod options;
 mod parser;
+mod slice;
 mod view;
 mod writer;
 
-pub use envelope::Envelope;
+pub use envelope::{ENVELOPE_VERSION, Envelope};
 pub use fragment::from_fragment_json;
 pub use options::ParseOptions;
 pub use parser::check_json;
 pub use parser::from_json;
+pub use slice::from_slice_json;
 pub use view::{view_json, write_view_into};
 pub use writer::write_doc_into;
 pub(crate) use writer::write_string;

@@ -1,0 +1,13 @@
+error: heading requires level
+  --> tests/ui/heading_no_level.rs:4:13
+   |
+ 4 |       let _ = schema! {
+   |  _____________^
+ 5 | |         doc { content: "block+" }
+ 6 | |         heading {
+ 7 | |             group: "block",
+...  |
+12 | |     };
+   | |_____^
+   |
+   = note: this error originates in the macro `schema` (in Nightly builds, run with -Z macro-backtrace for more info)

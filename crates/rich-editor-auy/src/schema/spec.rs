@@ -32,6 +32,35 @@ pub enum AttrType {
     Any,
 }
 
+impl AttrType {
+    /// Builds a closed set of string values.
+    ///
+    /// This is the constructor the declarative front-end emits; keeping it here means macros
+    /// never name `alloc` types in expanded code.
+    #[must_use]
+    pub fn enumerated(values: &[&str]) -> Self {
+        Self::Enum(
+            values
+                .iter()
+                .map(|value| Box::<str>::from(*value))
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        )
+    }
+
+    /// Builds a canonical array of one inner type.
+    #[must_use]
+    pub fn list(inner: Self) -> Self {
+        Self::List(Box::new(inner))
+    }
+
+    /// Builds a canonical object of one inner value type.
+    #[must_use]
+    pub fn map(inner: Self) -> Self {
+        Self::Map(Box::new(inner))
+    }
+}
+
 /// One declared attribute.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AttrSpec {

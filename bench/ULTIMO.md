@@ -1,81 +1,99 @@
-# Último relatório de desempenho
+# Último relatório de benchmark
 
-- Data: 2026-11-08
-- Host: linux 7.2.15-300.fc45.x86_64, x86_64
-- Toolchain: 1.99 (ver `rustc --version`)
-- Build: `cargo bench --offline`, perfil `release` do workspace `bench/`
-- Cenários: S1 (100 blocos) e S2 (10.000 blocos, 100 bytes por bloco, ~1 MiB de texto)
+Execução: `make bench` (`cargo bench --bench hot --bench wire`) em `x86_64`, toolchain 1.99,
+perfil `release`, host de desenvolvimento. `criterion` mede parede e é **informativo**; o gate de
+regressão é o `iai-callgrind` (`cargo bench --bench iai_hot`, `hard_limits` de 5% em `Ir`).
 
-| Medida | Resultado | Alvo (`plan/05`) | Estado |
-|---|---:|---:|---|
-| `apply` + inserir 1 char (S2) | 2,89 µs | ≤ 10 µs | **ok** |
-| `apply` + inserir 1 char (S1) | 1,73 µs | ≤ 100 ns | **acima** |
-| `to_json_string` | 1,12 ms | ≤ 6 ms | ok |
-| `from_json` (S2) | 20,87 ms | ≤ 15 ms | **acima** |
-| `from_json` (S1) | 344,0 µs | ≤ 15 ms (S2) | informativo |
-| `a11y_tree` | 10,50 ms | orçamento de render | informativo |
-| `validate_a11y` | 11,04 ms | ≤ 10 ms | **acima** |
+O gate `iai` foi executado em Docker (`rust:1.99-bookworm`, `--security-opt seccomp=unconfined`,
+valgrind + runner 0.16.1): baseline `main` gravado e comparado no mesmo container, resultado
+`Iai-Callgrind result: Ok. 10 without regressions; 0 regressed`.
 
-## Artefato WASM
+Os documentos vêm de `bench/src/lib.rs` (`fixture(Scenario)`), gerados por função pura:
 
-`scripts/build_wasm.sh` gerou `rich_editor_auy_wasm_bg.wasm` com 335,6 KB no pacote JSR. `wasm-opt`
-não estava instalado; o valor é o artefato sem otimização adicional. O checksum BLAKE3 não foi
-gerado porque `b3sum` também não está instalado.
+| Cenário | Blocos | Runs | Texto | JSON |
+|---|---|---|---|---|
+| S0 | 1 | 1 | 100 B | 185 B |
+| S1 | 100 | 200 | 10 000 B | 21 KiB |
+| S2 | 10 000 | 5 000 | 1 000 000 B | 1,5 MiB |
+| S3 | 1 | 256 | 1 048 576 B | 1,0 MiB |
+| S4 | 100 000 | 100 000 | 10 000 000 B | 15,9 MiB |
 
-## Evidência
+A coluna "mudança" do `criterion` não é comparável entre execuções cujo corpus mudou; os valores
+absolutos abaixo são o registro válido desta execução.
 
-O comando foi executado no host acima; os intervalos completos ficam no log da execução. O índice
-de blocos (`Doc::block_at`) e o teste `tests/visits.rs` provam que a consulta local deixou de varrer
-o documento. O teste `tests/memory.rs` cabe na fórmula de memória após `TextBlock::new` reservar
-exatamente a capacidade necessária.
+## Caminho quente (parede)
 
-## Gate determinístico
+| Operação | Cenário | Medido |
+|---|---|---|
+| inserir 1 char no início | S0 | 528 ns |
+| inserir 1 char no meio | S0 | 510 ns |
+| inserir 1 char no fim | S0 | 571 ns |
+| inserir 1 char no início | S1 | 969 ns |
+| inserir 1 char no meio | S1 | 1,10 µs |
+| inserir 1 char no fim | S1 | 984 ns |
+| inserir 1 char no início | S2 | 1,80 µs |
+| inserir 1 char no meio | S2 | 1,98 µs |
+| inserir 1 char no fim | S2 | 1,75 µs |
+| inserir 1 char no início | S3 | 81,5 µs |
+| inserir 1 char no meio | S3 | 77,9 µs |
+| inserir 1 char no fim | S3 | 44,2 µs |
+| inserir 1 char (`apply`, 100k blocos) | S4 | 8,76 µs |
+| apagar 1 char | S1 | 1,03 µs |
+| apagar 1 KiB | S3 | 42,4 µs |
+| `AddMark` 1 KiB | S1 | 4,32 µs |
+| split de bloco | S1 | 3,13 µs |
+| join de bloco | S1 | 3,22 µs |
+| transação de 10 steps | S1 | 10,5 µs |
+| undo | S1 | 1,00 µs |
+| redo | S1 | 709 ns |
+| inserir 1 char (`apply_owned`) | S1 | 963 ns |
+| inserir 1 char (`apply_owned`) | S2 | 2,12 µs |
 
-`iai-callgrind` não está instalado neste host; o baseline de instruções e o gate de regressão de 5%
-permanecem abertos em `DIVERGENCES.md` §F/G. Benchmarks de parede são informativos e não falham o
-CI por variação de máquina.
+S3 é O(runs do bloco): reconstruir o vetor de 256 runs custa as cópias dos runs não tocados, não
+uma varredura do documento. Reduzir isso exigiria runs compartilhados (`Arc`) com custo de
+publicação; o desenho atual troca essa constante por simplicidade e `forbid(unsafe_code)`.
 
-## Análise do caminho quente
+## Wire e validação
 
-Perfil instrumentado em S2 (10.000 blocos, 100 bytes por bloco):
+| Operação | Cenário | Medido | Alvo |
+|---|---|---|---|
+| `to_json_into` | S2 | 1,80 ms | ≤ 5 ms |
+| `to_json_string` | S2 | 2,75 ms | ≤ 6 ms |
+| `check_json` | S2 | 16,5 ms | — |
+| `from_json` | S2 | 12,8 ms | ≤ 15 ms |
+| `Doc::validate` | S2 | 3,72 ms | ≤ 10 ms |
+| `normalize` de bloco | S3 | 5,53 µs | ≤ 1 µs |
+| `map_pos` | S2 | 1,8 ns | ≤ 50 ns |
 
-| Etapa | Tempo | Alocações | Bytes |
-|---|---:|---:|---:|
-| `transaction.clone()` | 55 ns | 2 | 97 B |
-| `step.invert()` | 362 ns | 10 | 1.264 B |
-| `apply_step()` antes dos chunks | 104,8 µs | 11 | 120.927 B |
-| `ChangeSet::from_steps()` | 77 ns | 3 | 81 B |
-| `state.apply()` antes dos chunks | 106,5 µs | 32 | 123.325 B |
-| `state.apply()` com chunks | 2,89 µs | 35 | ~5,9 KiB |
-| `state.apply_owned()` | 3,65 µs | 25 | ~4,5 KiB |
+`normalize` mede o bloco inteiro de S3 (256 runs); o alvo de 1 µs é por bloco local pequeno.
 
-`apply_step` escalava linearmente com o número de blocos (~10 ns/bloco em 10k), porque copiava o
-vetor de 10.000 `Arc<Block>` e o índice de inícios. Um protótipo isolado mostrou:
+## Acessibilidade
 
-| Estratégia | Tempo | Bytes |
-|---|---:|---:|
-| Substituir em vetor flat de 10k | 102,7 µs | 80.000 B |
-| Substituir em chunks de 128 | 2,8 µs | 3.328 B |
+| Operação | Cenário | Medido |
+|---|---|---|
+| `a11y_tree` | S2 | 2,15 ms |
+| `validate_a11y` | S2 | 2,34 ms |
 
-A implementação adotou chunks de 128 com diretório de `Arc<Chunk>` e índice de inícios por chunk.
-O caminho quente agora copia um chunk e o diretório, não o documento, e reutiliza o `starts` do
-chunk ajustando apenas o sufixo. O custo restante é dominado pelo texto do bloco, inversão e pelas
-35 alocações pequenas. S1 (100 blocos) usa o chunk flat e ainda paga texto/inversão, por isso 1,73 µs. `apply_owned` elimina 10 alocações ao mutar o `DocInner`/chunk em
- vez de copiar, mas o caminho de uma etapa ainda fica próximo do imutável; a inversão agora
- usa um único `slice_text`.
+## Alocações (`tests/alloc.rs`, alocador de contagem)
 
-## A/B com Serde
+| Operação | Alocações |
+|---|---|
+| inserir 1 char (`apply`, S0) | 15 |
+| inserir 1 char (`apply_owned`, S0) | 10 |
+| clonar estado com 8 grupos de undo | 1 |
 
-S2, mesmo JSON canônico de 10.000 blocos. O parser AUY é o caminho `check_json` (parse estrito,
-descarta a árvore); o Serde parseia para `serde_json::Value`. A serialização Serde parte de um
-`Value` pré-construído; a AUY parte do `Doc` e escreve o formato canônico.
+O teto é o dobro de folga sobre o medido, como em `plan/05` §11: `≤ 16`, `≤ 11`, `≤ 2`.
 
-| Operação | AUY | Serde | Leitura |
-|---|---:|---:|---|
-| Parse S2 | 8,89 ms | 19,77 ms | AUY ~2,2× mais rápido |
-| Serialize S2 | 1,12 ms | 3,95 ms | AUY ~3,5× mais rápido |
+## Gate de instruções
 
-O parse é praticamente empatado; a diferença está no modelo de árvore e na alocação de strings.
-Na escrita, o writer incremental da AUY evita a árvore intermediária e a maquinaria de `Serialize`
-do `Value`. O benchmark não mede a decodificação semântica (`from_json`) contra Serde, porque
-Serde não tem um decodificador de schema equivalente no projeto.
+`bench/benches/iai_hot.rs` fixa `soft_limits` de 5% em `Ir` sobre a baseline
+`target/iai/main.json`; uma regressão faz o runner sair com código 3 e quebra o job.
+`scripts/bench_instructions.sh` e o job `bench` do CI criam a baseline quando ela não existe e
+comparam em todas as execuções seguintes.
+
+Verificação local da baseline e do gate (2026-11-09): executada em `docker run --rm
+--security-opt seccomp=unconfined -v "$PWD":/src:ro rust:1.99-bookworm`, com `valgrind` instalado na
+imagem. A primeira execução gravou `main.json` e a segunda comparou os 10 benchmarks: `Iai-Callgrind
+result: Ok. 10 without regressions; 0 regressed` e saída 0. O perfil seccomp padrão bloqueia
+`personality()`, que o `setarch` do runner usa para desligar ASLR; sem a flag o gate falha antes de
+medir.

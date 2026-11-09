@@ -8,7 +8,7 @@ fuzz_target!(|data: &[u8]| {
     let Ok(text) = core::str::from_utf8(data) else {
         return;
     };
-    let Ok(schema) = Schema::basic() else {
+    let Ok(schema) = Schema::full() else {
         return;
     };
     if let Ok(doc) = from_json(text, &schema, &ParseOptions::default()) {

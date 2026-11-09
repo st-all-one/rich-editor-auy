@@ -100,6 +100,12 @@ pub struct Range<T = Pos> {
 
 impl<T> Range<T> {
     /// Creates a range without validating order.
+    ///
+    /// `new` is a const, allocation-free constructor and deliberately does not check the order:
+    /// use [`Range::is_empty`] to tell an empty range from an inverted one. Every operation that
+    /// consumes a range (`Doc::slice`, `Doc::delete_range`, steps and transactions) rejects
+    /// `start > end` with an out-of-bounds error; [`crate::state::Selection::range`] normalizes
+    /// inverted anchors before exposing a range.
     #[must_use]
     pub const fn new(start: T, end: T) -> Self {
         Self { start, end }
@@ -108,15 +114,20 @@ impl<T> Range<T> {
 
 impl Range<Pos> {
     /// Returns the covered byte count.
+    ///
+    /// An inverted range covers no bytes and reports `0`.
     #[must_use]
     pub const fn len(self) -> u32 {
         self.end.0.saturating_sub(self.start.0)
     }
 
     /// Returns whether the range is empty.
+    ///
+    /// Only `start == end` is empty; an inverted range is invalid and must be rejected by the
+    /// operation that receives it.
     #[must_use]
     pub const fn is_empty(self) -> bool {
-        self.start.0 >= self.end.0
+        self.start.0 == self.end.0
     }
 
     /// Returns whether a position lies inside the half-open range.
@@ -180,16 +191,21 @@ impl DocPath {
 
     /// Appends one index component.
     #[must_use]
-    #[allow(
-        clippy::format_push_string,
-        reason = "diagnostic path construction is cold"
-    )]
     pub fn child(&self, index: u32) -> Self {
-        let mut value = alloc::string::String::from(&*self.0);
-        if !value.is_empty() {
+        // Decimal digits are written by hand: `format!` allocates a second buffer per node,
+        // and the a11y tree builds one path per block.
+        let mut digits = [0_u8; 10];
+        let start = write_digits(index, &mut digits);
+        let separator = usize::from(!self.0.is_empty());
+        let width = digits.len().saturating_sub(start).saturating_add(separator);
+        let mut value = alloc::string::String::with_capacity(self.0.len().saturating_add(width));
+        value.push_str(&self.0);
+        if separator > 0 {
             value.push('/');
         }
-        value.push_str(&alloc::format!("{index}"));
+        for digit in digits.get(start..).unwrap_or(&[]) {
+            value.push(char::from(*digit));
+        }
         Self(value.into_boxed_str())
     }
 
@@ -197,6 +213,21 @@ impl DocPath {
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+/// Writes the decimal digits of `index` at the end of `buffer` and returns the first index.
+fn write_digits(mut index: u32, buffer: &mut [u8; 10]) -> usize {
+    let mut cursor = buffer.len();
+    loop {
+        cursor = cursor.saturating_sub(1);
+        if let Some(slot) = buffer.get_mut(cursor) {
+            *slot = u8::try_from(index % 10).unwrap_or(0).saturating_add(b'0');
+        }
+        index /= 10;
+        if index == 0 || cursor == 0 {
+            return cursor;
+        }
     }
 }
 

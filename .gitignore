@@ -24,5 +24,12 @@ rustc-ice-*.txt
 #.idea/
 ref
 
+# libFuzzer crash artifacts
+fuzz/artifacts/
+
 # Benchmark JS dependencies
 node_modules/
+
+# Composer install output (the PHP gate builds inside Docker)
+packages/php/vendor/
+packages/php/composer.lock

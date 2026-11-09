@@ -121,3 +121,120 @@ fn enforces_attribute_string_limits() {
         "attribute string limit must apply"
     );
 }
+
+fn parse_error(input: &str, schema: &Schema, limits: rich_editor_auy::Limits) -> Option<String> {
+    let options = ParseOptions { limits };
+    let error = from_json(input, schema, &options).err()?;
+    Some(error.code.to_string())
+}
+
+#[test]
+fn rejects_too_many_attributes_before_decoding_them() {
+    let Ok(schema) = Schema::basic() else {
+        return;
+    };
+    let limits = rich_editor_auy::Limits {
+        max_attrs_per_node: 0,
+        ..rich_editor_auy::Limits::default()
+    };
+    let code = parse_error(
+        r#"{"type":"doc","attrs":{"lang":"pt"},"content":[{"type":"paragraph","content":[]}]}"#,
+        &schema,
+        limits,
+    );
+    assert_eq!(code.as_deref(), Some("limit"));
+}
+
+#[test]
+fn rejects_too_many_mark_attributes_before_decoding_them() {
+    let Ok(schema) = Schema::basic() else {
+        return;
+    };
+    let limits = rich_editor_auy::Limits {
+        max_mark_attrs: 0,
+        ..rich_editor_auy::Limits::default()
+    };
+    let code = parse_error(
+        r#"{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"x","marks":[{"type":"link","attrs":{"href":"https://example.test"}}]}]}]}"#,
+        &schema,
+        limits,
+    );
+    assert_eq!(code.as_deref(), Some("limit"));
+}
+
+#[test]
+fn rejects_duplicate_mark_ids() {
+    let Ok(schema) = Schema::basic() else {
+        return;
+    };
+    let code = parse_error(
+        r#"{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"x","marks":[{"type":"strong"},{"type":"strong"}]}]}]}"#,
+        &schema,
+        rich_editor_auy::Limits::default(),
+    );
+    assert_eq!(code.as_deref(), Some("duplicate_mark"));
+}
+
+#[test]
+fn rejects_too_many_nodes() {
+    let Ok(schema) = Schema::basic() else {
+        return;
+    };
+    let limits = rich_editor_auy::Limits {
+        max_nodes: 1,
+        ..rich_editor_auy::Limits::default()
+    };
+    let code = parse_error(
+        r#"{"type":"doc","content":[{"type":"paragraph","content":[]},{"type":"paragraph","content":[]}]}"#,
+        &schema,
+        limits,
+    );
+    assert_eq!(code.as_deref(), Some("limit"));
+}
+
+#[test]
+fn rejects_deeply_nested_attribute_values() {
+    let Ok(schema) = Schema::full() else {
+        return;
+    };
+    // The JSON depth budget rejects the nested value before `AttrValue` is built; the decoder
+    // keeps the same guard for schemas that nest attribute types.
+    let code = parse_error(
+        r#"{"type":"doc","attrs":{"metadata":{"key":"value"}}}"#,
+        &schema,
+        rich_editor_auy::Limits {
+            max_depth: 2,
+            ..rich_editor_auy::Limits::default()
+        },
+    );
+    assert!(code.is_some(), "deeply nested attributes must be rejected");
+}
+
+#[test]
+fn rejects_oversized_strings_inside_list_and_map_attributes() {
+    let Ok(schema) = Schema::full() else {
+        return;
+    };
+    let limits = rich_editor_auy::Limits {
+        max_attr_string_bytes: 1,
+        ..rich_editor_auy::Limits::default()
+    };
+    assert_eq!(
+        parse_error(
+            r#"{"type":"doc","attrs":{"tags":["ab"]},"content":[{"type":"paragraph","content":[]}]}"#,
+            &schema,
+            limits,
+        )
+        .as_deref(),
+        Some("limit")
+    );
+    assert_eq!(
+        parse_error(
+            r#"{"type":"doc","attrs":{"metadata":{"key":"v"}},"content":[{"type":"paragraph","content":[]}]}"#,
+            &schema,
+            limits,
+        )
+        .as_deref(),
+        Some("limit")
+    );
+}

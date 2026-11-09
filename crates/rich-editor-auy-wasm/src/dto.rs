@@ -7,6 +7,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+mod import;
+pub(crate) use import::{BatchLimits, ImportPayload};
+
 /// Boundary association sign default.
 fn default_assoc() -> i8 {
     1
@@ -104,6 +107,9 @@ pub(crate) enum Op {
         to: u32,
         /// Declared mark name.
         mark: String,
+        /// Explicit desired state; absent toggles.
+        #[serde(default)]
+        active: Option<bool>,
     },
     /// Set an attribute on the top-level block containing a position.
     #[serde(
@@ -185,6 +191,45 @@ pub(crate) enum Op {
         /// New selection.
         selection: SelectionJson,
     },
+    /// Change the type of the top-level block containing a position.
+    #[serde(rename = "set_block_type", alias = "setBlockType")]
+    SetBlockType {
+        /// Position inside the block.
+        #[serde(alias = "pos")]
+        at: u32,
+        /// Declared node kind name.
+        kind: String,
+        /// Block attributes by name.
+        #[serde(default)]
+        attrs: Option<Value>,
+    },
+    /// Set or clear the stable identifier of a block.
+    #[serde(rename = "set_node_id", alias = "setNodeId")]
+    SetNodeId {
+        /// Position inside the block.
+        at: u32,
+        /// New identifier, or `null` to clear it.
+        #[serde(default)]
+        id: Option<String>,
+    },
+    /// Replace a range with a slice.
+    #[serde(rename = "replace_slice", alias = "replaceSlice")]
+    ReplaceSlice {
+        /// Start position.
+        from: u32,
+        /// End position.
+        to: u32,
+        /// Slice JSON.
+        slice: Value,
+    },
+}
+
+/// Construction options accepted by `fromJSON` and `fromEnvelope`.
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
+pub(crate) struct EditorOptionsJson {
+    /// Replacement `(max_groups, max_bytes)` history budgets.
+    #[serde(default, alias = "historyLimits")]
+    pub(crate) history_limits: Option<(usize, usize)>,
 }
 
 /// Batch envelope accepted by `apply` and `dryRun`.
@@ -192,35 +237,16 @@ pub(crate) enum Op {
 pub(crate) struct BatchPayload {
     /// Ordered operations applied atomically.
     pub ops: Vec<Op>,
-}
-
-/// Import envelope accepted by `import`.
-#[derive(Clone, Debug, Deserialize)]
-pub(crate) struct ImportPayload {
-    /// `document`, `fragment`, `replace`, `insert`, or `ops`.
-    pub mode: String,
-    /// Optional schema fingerprint the payload was built against.
-    #[serde(default)]
-    pub schema: Option<String>,
-    /// Document token tree for `document` mode.
-    #[serde(default)]
-    pub doc: Option<Value>,
-    /// Fragment token tree for `fragment`, `replace`, and `insert` modes.
-    #[serde(default)]
-    pub fragment: Option<Value>,
-    /// Replacement start for `replace` mode.
-    #[serde(default)]
-    pub from: Option<u32>,
-    /// Replacement end for `replace` mode.
-    #[serde(default)]
-    pub to: Option<u32>,
-    /// Insertion position for `insert` mode.
-    #[serde(default)]
-    pub at: Option<u32>,
     /// Document version the batch was computed against.
     #[serde(default, alias = "baseVersion")]
     pub base_version: Option<u32>,
-    /// Operations for `ops` mode.
+    /// History origin name (`user`, `paste`, `remote`, `api`, `import`).
     #[serde(default)]
-    pub ops: Option<Vec<Op>>,
+    pub origin: Option<String>,
+    /// Explicit history group identifier.
+    #[serde(default)]
+    pub group: Option<u32>,
+    /// Whether the batch enters history; defaults to `true`.
+    #[serde(default, alias = "addToHistory")]
+    pub add_to_history: Option<bool>,
 }

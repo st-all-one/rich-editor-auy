@@ -87,6 +87,16 @@ impl TextBlock {
     /// Creates a text block, normalizing empty and adjacent runs.
     #[must_use]
     pub fn new(items: Vec<InlineItem>) -> Self {
+        if items_are_canonical(&items) {
+            let len = items
+                .iter()
+                .map(InlineItem::size)
+                .fold(0_u32, u32::saturating_add);
+            return Self {
+                items,
+                len: Size(len),
+            };
+        }
         let mut block = Self {
             items: Vec::with_capacity(items.len()),
             len: Size::ZERO,
@@ -105,23 +115,27 @@ impl TextBlock {
 
     /// Appends an item, merging adjacent runs with equal marks.
     pub fn push(&mut self, item: InlineItem) {
-        match item {
+        let added = match item {
             InlineItem::Text(run) => {
                 if run.is_empty() {
                     return;
                 }
+                let size = usize_to_u32(run.text.len()).unwrap_or(u32::MAX);
                 if let Some(InlineItem::Text(previous)) = self.items.last_mut()
                     && previous.marks == run.marks
                 {
                     previous.text.push_str(&run.text);
-                    self.recompute_len();
-                    return;
+                } else {
+                    self.items.push(InlineItem::Text(run));
                 }
-                self.items.push(InlineItem::Text(run));
+                size
             }
-            InlineItem::Atom(atom) => self.items.push(InlineItem::Atom(atom)),
-        }
-        self.recompute_len();
+            InlineItem::Atom(atom) => {
+                self.items.push(InlineItem::Atom(atom));
+                1
+            }
+        };
+        self.len = Size(self.len.0.saturating_add(added));
     }
 
     /// Returns inline items.
@@ -182,6 +196,9 @@ impl TextBlock {
     /// Returns a limit error when a single run cannot be represented.
     pub fn normalize(&mut self, max_run_bytes: u32) -> Result<(), LimitError> {
         let ceiling = usize::try_from(max_run_bytes).unwrap_or(MAX_RUN_BYTES);
+        if self.is_normalized(ceiling) {
+            return Ok(());
+        }
         let mut normalized = Vec::new();
         for item in core::mem::take(&mut self.items) {
             match item {
@@ -221,6 +238,16 @@ impl TextBlock {
         Ok(())
     }
 
+    /// Returns whether the items already satisfy [`TextBlock::normalize`]'s invariants.
+    fn is_normalized(&self, ceiling: usize) -> bool {
+        let width = ceiling.max(1);
+        items_are_canonical(&self.items)
+            && self.items.iter().all(|item| match item {
+                InlineItem::Text(run) => run.text.len() <= width,
+                InlineItem::Atom(_) => true,
+            })
+    }
+
     fn recompute_len(&mut self) {
         let mut total = 0_u32;
         for item in &self.items {
@@ -228,4 +255,21 @@ impl TextBlock {
         }
         self.len = Size(total);
     }
+}
+
+/// Returns whether items hold no empty run and no two adjacent runs with equal marks.
+fn items_are_canonical(items: &[InlineItem]) -> bool {
+    let mut previous: Option<&MarkSet> = None;
+    for item in items {
+        match item {
+            InlineItem::Text(run) => {
+                if run.text.is_empty() || previous.is_some_and(|marks| marks == &run.marks) {
+                    return false;
+                }
+                previous = Some(&run.marks);
+            }
+            InlineItem::Atom(_) => previous = None,
+        }
+    }
+    true
 }

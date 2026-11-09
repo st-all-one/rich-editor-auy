@@ -19,14 +19,29 @@ pub(super) fn write_fragment_into(
     schema: &Schema,
     out: &mut impl Write,
 ) -> fmt::Result {
-    out.write_str("{\"blocks\":[")?;
+    out.write_str("{\"blocks\":")?;
+    write_fragment_body_into(fragment, schema, out)?;
+    out.write_char('}')
+}
+
+/// Writes the `"blocks":[...]` member without the surrounding object.
+///
+/// # Errors
+///
+/// Propagates formatting failures from the sink.
+pub(super) fn write_fragment_body_into(
+    fragment: &Fragment,
+    schema: &Schema,
+    out: &mut impl Write,
+) -> fmt::Result {
+    out.write_char('[')?;
     for (index, block) in fragment.blocks().iter().enumerate() {
         if index > 0 {
             out.write_char(',')?;
         }
         write_block(block, schema, out)?;
     }
-    out.write_str("]}")
+    out.write_char(']')
 }
 
 /// Writes a document as canonical JSON.
@@ -56,30 +71,8 @@ fn write_block(block: &Block, schema: &Schema, out: &mut impl Write) -> fmt::Res
     write_attrs(block.attrs(), &spec.attrs, out)?;
     match block.content() {
         BlockContent::Text(text) => {
-            out.write_str(",\"content\":[")?;
-            let mut first = true;
-            for item in text.items() {
-                match item {
-                    InlineItem::Text(run) => {
-                        if !first {
-                            out.write_char(',')?;
-                        }
-                        first = false;
-                        out.write_str("{\"type\":\"text\",\"text\":")?;
-                        write_string(&run.text, out)?;
-                        write_marks(&run.marks, schema, out)?;
-                        out.write_char('}')?;
-                    }
-                    InlineItem::Atom(atom) => {
-                        if !first {
-                            out.write_char(',')?;
-                        }
-                        first = false;
-                        write_inline_atom(atom, schema, out)?;
-                    }
-                }
-            }
-            out.write_char(']')?;
+            out.write_str(",\"content\":")?;
+            write_items(text.items(), schema, out)?;
         }
         BlockContent::Blocks(children) => {
             out.write_str(",\"content\":[")?;
@@ -94,6 +87,34 @@ fn write_block(block: &Block, schema: &Schema, out: &mut impl Write) -> fmt::Res
         BlockContent::Atom(_) => {}
     }
     out.write_char('}')
+}
+
+/// Writes an inline item sequence as a canonical JSON array.
+///
+/// # Errors
+///
+/// Propagates formatting failures from the sink and rejects unknown node kinds.
+pub(super) fn write_items(
+    items: &[InlineItem],
+    schema: &Schema,
+    out: &mut impl Write,
+) -> fmt::Result {
+    out.write_char('[')?;
+    for (index, item) in items.iter().enumerate() {
+        if index > 0 {
+            out.write_char(',')?;
+        }
+        match item {
+            InlineItem::Text(run) => {
+                out.write_str("{\"type\":\"text\",\"text\":")?;
+                write_string(&run.text, out)?;
+                write_marks(&run.marks, schema, out)?;
+                out.write_char('}')?;
+            }
+            InlineItem::Atom(atom) => write_inline_atom(atom, schema, out)?,
+        }
+    }
+    out.write_char(']')
 }
 
 fn write_inline_atom(

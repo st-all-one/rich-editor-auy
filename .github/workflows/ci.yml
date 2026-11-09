@@ -32,6 +32,7 @@ jobs:
       - run: python3 scripts/check_links.py
       - run: ./scripts/check_zero_style.sh
       - run: cargo package -p rich-editor-auy --locked --allow-dirty
+      - run: cargo package -p rich-editor-auy-macros --locked --allow-dirty
 
   msrv:
     runs-on: ubuntu-latest
@@ -73,9 +74,12 @@ jobs:
           toolchain: 1.99
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y binaryen
       - run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
-      - run: ./scripts/build_wasm.sh
+      - run: cargo install b3sum --version 1.8.2 --locked
+      - run: AUY_REQUIRE_WASM_OPT=1 ./scripts/build_wasm.sh
       - run: test -s packages/ts/packages/core/wasm/rich_editor_auy_wasm_bg.wasm
+      - run: test -s packages/ts/packages/core/wasm/rich_editor_auy_wasm_bg.wasm.blake3
 
   js:
     runs-on: ubuntu-latest
@@ -108,7 +112,30 @@ jobs:
         with:
           toolchain: 1.99
       - uses: Swatinem/rust-cache@v2
-      - run: cd bench && cargo bench --bench hot_path
+      - run: sudo apt-get update && sudo apt-get install -y valgrind
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: iai-callgrind@0.16.1
+      - uses: actions/cache/restore@v4
+        with:
+          path: bench/target/iai
+          key: iai-${{ hashFiles('bench/Cargo.lock', 'bench/benches/iai_hot.rs', 'bench/src/lib.rs') }}
+          restore-keys: iai-
+      - name: criterion scenarios
+        run: cd bench && cargo bench --bench hot --bench wire
+      - name: instruction gate
+        run: |
+          cd bench
+          if [ -f target/iai/main.json ]; then
+            cargo bench --bench iai_hot -- --baseline=main
+          else
+            cargo bench --bench iai_hot -- --save-baseline=main
+          fi
+      - uses: actions/cache/save@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          path: bench/target/iai
+          key: iai-${{ hashFiles('bench/Cargo.lock', 'bench/benches/iai_hot.rs', 'bench/src/lib.rs') }}
 
   fuzz:
     runs-on: ubuntu-latest
@@ -116,6 +143,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
       - run: cargo install cargo-fuzz --locked
-      - run: cd fuzz && cargo +nightly fuzz run json_parse -- -max_total_time=30
-      - run: cd fuzz && cargo +nightly fuzz run a11y_tree -- -max_total_time=30
-      - run: cd fuzz && cargo +nightly fuzz run apply_step -- -max_total_time=30
+      - run: cd fuzz && cargo +nightly fuzz run --fuzz-dir . json_parse -- -max_total_time=60
+      - run: cd fuzz && cargo +nightly fuzz run --fuzz-dir . a11y_tree -- -max_total_time=60
+      - run: cd fuzz && cargo +nightly fuzz run --fuzz-dir . apply_step -- -max_total_time=60
+      - run: cd fuzz && cargo +nightly fuzz run --fuzz-dir . round_trip -- -max_total_time=60
+      - run: cd fuzz && cargo +nightly fuzz run --fuzz-dir . fragment -- -max_total_time=60

@@ -21,6 +21,47 @@ pub(crate) fn token_problem(token: &str, instance: &str) -> ProblemDetails {
     )
 }
 
+/// Reports a transaction that was already applied.
+pub(crate) fn consumed_transaction() -> ProblemDetails {
+    build(
+        "consumed-transaction",
+        "Consumed transaction",
+        409,
+        "consumed_transaction",
+        String::from("The transaction was already applied; build a new one."),
+        Some("transaction"),
+        Some(String::from(
+            "Start a new transaction against the current version.",
+        )),
+    )
+}
+
+/// Reports an unknown history origin name.
+pub(crate) fn unknown_origin(origin: &str) -> ProblemDetails {
+    build(
+        "unknown-origin",
+        "Unknown history origin",
+        422,
+        "unknown_origin",
+        format!("The origin '{origin}' is not a history origin."),
+        Some("origin"),
+        Some(String::from("Use user, paste, remote, api, or import.")),
+    )
+}
+
+/// Reports a command that needs a selection but has none.
+pub(crate) fn missing_selection() -> ProblemDetails {
+    build(
+        "missing-selection",
+        "Missing selection",
+        409,
+        "missing_selection",
+        String::from("The command needs a caret or a selected range."),
+        Some("selection"),
+        Some(String::from("Set a selection before running the command.")),
+    )
+}
+
 /// Reports an unrepresentable token at a structural path.
 pub(crate) fn unknown_token_problem(instance: &str) -> ProblemDetails {
     build(
@@ -148,6 +189,36 @@ pub(crate) fn schema_mismatch_problem(expected: &str, actual: &str) -> ProblemDe
         Some("schema"),
         Some(String::from(
             "Rebuild the payload against the active schema.",
+        )),
+    )
+}
+
+/// Reports an anchor whose import policy rejected it.
+pub(crate) fn id_rejected_problem(instance: &str) -> ProblemDetails {
+    build(
+        "id-rejected",
+        "Anchor rejected",
+        422,
+        "id_rejected",
+        format!("The payload carries an anchor at {instance} and the id policy rejects anchors."),
+        Some(instance),
+        Some(String::from(
+            "Strip anchors, use idPolicy \"regenerate\", or accept anchors with \"preserve\".",
+        )),
+    )
+}
+
+/// Reports an unusable anchor policy.
+pub(crate) fn id_policy_problem(detail: &str) -> ProblemDetails {
+    build(
+        "invalid-id-policy",
+        "Invalid id policy",
+        422,
+        "invalid_id_policy",
+        String::from(detail),
+        Some("options.idPolicy"),
+        Some(String::from(
+            "Use idPolicy preserve, regenerate, or reject; regenerate needs idSeed.",
         )),
     )
 }

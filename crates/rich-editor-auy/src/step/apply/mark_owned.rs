@@ -22,7 +22,8 @@ pub(super) fn mark_range_owned(
     mark: &crate::model::Mark,
     add: bool,
 ) -> Result<Doc, StepError> {
-    if from >= to {
+    crate::step::check_range(&result, from, to)?;
+    if from == to {
         return Ok(result);
     }
     let mut offset = 0_u32;

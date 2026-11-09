@@ -7,9 +7,14 @@
 use alloc::boxed::Box;
 
 use crate::error::StepError;
-use crate::model::Mark;
+use crate::model::{Attrs, InlineAtom, InlineItem, Mark, NodeKind, TextBlock};
 use crate::pos::{Pos, Range};
 use crate::state::{EditorState, Selection, Transaction};
+use crate::step::Slice;
+
+mod delete;
+
+pub use delete::{delete_backward, delete_forward};
 
 /// Inserts text at the selection, replacing a non-empty selection first.
 #[must_use]
@@ -84,6 +89,41 @@ pub fn split_block(state: &EditorState) -> Option<Transaction> {
     Some(transaction)
 }
 
+/// Inserts a hard break at the selection.
+#[must_use]
+pub fn insert_hard_break(state: &EditorState) -> Option<Transaction> {
+    let kind = state.schema().node_kind("hard_break")?;
+    let range = state.selection().range()?;
+    let mut transaction = state.transaction();
+    if !range.is_empty() && transaction.delete(range).is_err() {
+        return None;
+    }
+    let mut content = TextBlock::empty();
+    content.push(InlineItem::Atom(InlineAtom {
+        kind,
+        attrs: Attrs::empty(),
+    }));
+    transaction
+        .replace(
+            Range::new(range.start, range.start),
+            Slice::from_textblock(content),
+        )
+        .ok()?;
+    transaction.set_selection(Selection::caret(range.start.checked_add(1)?));
+    Some(transaction)
+}
+
+/// Changes the type of the block containing the selection head.
+#[must_use]
+pub fn set_block_type(state: &EditorState, kind: NodeKind, attrs: Attrs) -> Option<Transaction> {
+    let head = state.selection().head()?;
+    let mut transaction = state.transaction();
+    transaction
+        .set_block_type(state.schema(), head, kind, attrs)
+        .ok()?;
+    Some(transaction)
+}
+
 /// Selects the whole document.
 #[must_use]
 #[allow(
@@ -126,14 +166,12 @@ fn range_has_mark(state: &EditorState, range: Range, id: crate::model::MarkId) -
         let mut cursor = 0_u32;
         for item in text.items() {
             let size = match item {
-                crate::model::InlineItem::Text(run) => {
-                    u32::try_from(run.text.len()).unwrap_or(u32::MAX)
-                }
-                crate::model::InlineItem::Atom(_) => 1,
+                InlineItem::Text(run) => u32::try_from(run.text.len()).unwrap_or(u32::MAX),
+                InlineItem::Atom(_) => 1,
             };
             let item_end = cursor.saturating_add(size);
             if item_end > local_start && cursor < local_end {
-                let crate::model::InlineItem::Text(run) = item else {
+                let InlineItem::Text(run) = item else {
                     return false;
                 };
                 if !run.marks.contains(id) {

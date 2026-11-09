@@ -116,6 +116,12 @@ impl Schema {
         self.doc_machine.allows(children)
     }
 
+    /// Returns the first deterministic filler kind for the document.
+    #[must_use]
+    pub fn doc_filler(&self) -> Option<NodeKind> {
+        self.doc_machine.first_kind()
+    }
+
     /// Returns whether a node may be empty.
     #[must_use]
     pub fn content_can_be_empty(&self, kind: NodeKind) -> bool {

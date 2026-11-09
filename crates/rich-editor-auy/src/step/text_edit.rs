@@ -14,8 +14,11 @@ use alloc::vec::Vec;
 use crate::error::StepError;
 use crate::model::{InlineItem, Mark, MarkSet, Run, TextBlock};
 
+mod insert;
 mod slice;
 pub(crate) use slice::slice_text;
+
+use insert::insert_into_plain_run;
 
 /// Replaces a byte range in a text block and inserts text at the start.
 ///
@@ -35,6 +38,11 @@ pub(crate) fn replace_text(
         return Err(StepError::Unsupported {
             operation: alloc::boxed::Box::from("text_range"),
         });
+    }
+    if start == end
+        && let Some(fast) = insert_into_plain_run(block, start, insert)
+    {
+        return Ok(fast);
     }
     let mut items = Vec::new();
     let mut cursor = 0_usize;

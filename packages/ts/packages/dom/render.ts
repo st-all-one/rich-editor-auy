@@ -1,5 +1,14 @@
 import type { A11yNode } from "@rich-editor-auy/core";
 
+/** How rendered elements expose their semantics. */
+export interface RenderOptions {
+  /**
+   * `native` uses `<h1>`, `<ul>`, `<a>` and `<img alt>`; `neutral` uses `div`/`span` plus the
+   * role, name and level the semantic tree declares.
+   */
+  readonly semantics?: "native" | "neutral";
+}
+
 /** Native element selected for a semantic role. */
 export interface RenderTargets {
   readonly document: Document;
@@ -18,47 +27,114 @@ const MARK_TAGS: Readonly<Record<string, string>> = {
 };
 
 /** Renders one semantic tree into a host without classes, styles, or wrappers. */
-export function renderTree(host: HTMLElement, tree: A11yNode): void {
+export function renderTree(
+  host: HTMLElement,
+  tree: A11yNode,
+  options: RenderOptions = {},
+): void {
   const doc = host.ownerDocument;
-  host.replaceChildren(...tree.children.map((child) => renderNode(doc, child)));
+  const mode = options.semantics ?? "native";
+  host.replaceChildren(
+    ...tree.children.map((child) => renderNode(doc, child, mode)),
+  );
 }
 
-function renderNode(doc: Document, node: A11yNode): Node {
+function renderNode(
+  doc: Document,
+  node: A11yNode,
+  mode: "native" | "neutral",
+): Node {
   if (node.role === "text") {
-    return renderText(doc, node);
+    return renderText(doc, node, mode);
   }
-  const element = createElement(doc, node);
-  applyAttributes(element, node);
+  const element = mode === "neutral"
+    ? neutralElement(doc, node)
+    : createElement(doc, node);
+  applyAttributes(element, node, mode);
   if (node.role === "image") {
     return element;
   }
   if (node.children.length > 0) {
-    element.append(...node.children.map((child) => renderNode(doc, child)));
+    element.append(
+      ...node.children.map((child) => renderNode(doc, child, mode)),
+    );
   } else if (node.text !== undefined) {
     element.textContent = node.text;
   }
   return element;
 }
 
-function renderText(doc: Document, node: A11yNode): Node {
+/** Builds the neutral element for a role, with ARIA derived from the tree. */
+function neutralElement(doc: Document, node: A11yNode): HTMLElement {
+  const element = doc.createElement("div");
+  element.setAttribute("role", neutralRole(node.role));
+  if (node.role === "heading") {
+    element.setAttribute("aria-level", String(node.level ?? 2));
+  }
+  return element;
+}
+
+/** Maps a semantic role onto the ARIA role of the neutral mode. */
+function neutralRole(role: string): string {
+  switch (role) {
+    case "paragraph":
+      return "paragraph";
+    case "list_item":
+      return "listitem";
+    case "table_row":
+      return "row";
+    case "table_header":
+    case "table_cell":
+      return "cell";
+    case "table_caption":
+    case "caption":
+      return "caption";
+    case "code_block":
+    case "code":
+      return "code";
+    case "quote":
+      return "blockquote";
+    case "separator":
+      return "separator";
+    case "custom":
+      return "group";
+    default:
+      return role;
+  }
+}
+
+function renderText(
+  doc: Document,
+  node: A11yNode,
+  mode: "native" | "neutral",
+): Node {
   const text = node.text ?? node.name ?? "";
   let current: Node = doc.createTextNode(text);
   const marks = node.marks ?? [];
   for (const mark of [...marks].reverse()) {
     const tag = MARK_TAGS[mark];
     if (tag === undefined) continue;
-    const wrapper = doc.createElement(tag);
+    const wrapper = mode === "neutral"
+      ? doc.createElement("span")
+      : doc.createElement(tag);
+    wrapper.dataset.auyMark = mark;
     wrapper.append(current);
     const href = node.href === undefined ? undefined : safeUrl(node.href);
-    if (tag === "a" && href !== undefined) {
+    if (tag === "a" && href !== undefined && mode === "native") {
       wrapper.setAttribute("href", href);
     }
     current = wrapper;
   }
   const href = node.href === undefined ? undefined : safeUrl(node.href);
   if (href !== undefined && !marks.includes("link")) {
-    const link = doc.createElement("a");
-    link.setAttribute("href", href);
+    const link = mode === "neutral"
+      ? neutralElement(doc, { ...node, role: "link", href })
+      : doc.createElement("a");
+    if (mode === "neutral") {
+      link.setAttribute("role", "link");
+    } else {
+      link.setAttribute("href", href);
+    }
     link.append(current);
     current = link;
   }
@@ -114,7 +190,11 @@ function createElement(doc: Document, node: A11yNode): HTMLElement {
   }
 }
 
-function applyAttributes(element: HTMLElement, node: A11yNode): void {
+function applyAttributes(
+  element: HTMLElement,
+  node: A11yNode,
+  mode: "native" | "neutral",
+): void {
   element.dataset.auyRole = node.role;
   element.dataset.auyFrom = String(node.range.from);
   element.dataset.auyTo = String(node.range.to);
@@ -138,6 +218,15 @@ function applyAttributes(element: HTMLElement, node: A11yNode): void {
   if (node.scope !== undefined) element.setAttribute("scope", node.scope);
   if (node.role === "video" || node.role === "audio") {
     element.setAttribute("controls", "");
+  }
+  if (mode === "neutral" && node.role === "image") {
+    element.setAttribute("role", "img");
+  }
+  if (mode === "neutral" && node.role !== "table_caption") {
+    const label = node.alt ?? node.name;
+    if (label !== undefined && label.length > 0) {
+      element.setAttribute("aria-label", label);
+    }
   }
   if (node.role === "attachment") {
     element.setAttribute("download", "");

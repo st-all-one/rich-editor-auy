@@ -53,7 +53,8 @@ pub(super) fn set_mark_attr_owned(
     attr: AttrId,
     value: &AttrValue,
 ) -> Result<Doc, StepError> {
-    if from >= to {
+    crate::step::check_range(&doc, from, to)?;
+    if from == to {
         return Ok(doc);
     }
     validate_mark_attr(schema, mark, attr, value)?;

@@ -40,6 +40,7 @@ pub(super) fn set_inline_attr_owned(
     attr: AttrId,
     value: &AttrValue,
 ) -> Result<Doc, StepError> {
+    crate::step::check_range(&doc, from, to)?;
     let (index, block_start, block) = locate(&doc, from)?;
     let text = block.as_textblock().ok_or_else(|| StepError::Unsupported {
         operation: Box::from("inline_attr_outside_textblock"),
@@ -111,7 +112,7 @@ fn atom_attrs(
 
 /// Returns the content offset of a one-byte inline range.
 fn atom_offset(block_start: u32, from: Pos, to: Pos) -> Result<u32, StepError> {
-    if from >= to || to.0 != from.0.saturating_add(1) {
+    if from == to || to.0 != from.0.saturating_add(1) {
         return Err(StepError::Unsupported {
             operation: Box::from("inline_attr_range"),
         });

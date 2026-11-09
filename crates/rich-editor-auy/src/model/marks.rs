@@ -131,6 +131,30 @@ impl MarkSet {
         }
     }
 
+    /// Builds a set from marks in one pass.
+    ///
+    /// Attribute entries are sorted by declaration index. The caller guarantees unique mark
+    /// ids; duplicates only repeat mask bits.
+    #[must_use]
+    pub(crate) fn from_marks(marks: Vec<Mark>) -> Self {
+        let mut mask = 0_u64;
+        let mut attrs = Vec::with_capacity(marks.len());
+        for mark in marks {
+            mask |= bit(mark.id).unwrap_or(0);
+            if !mark.attrs.is_empty() {
+                attrs.push(MarkAttr {
+                    id: mark.id,
+                    attrs: mark.attrs,
+                });
+            }
+        }
+        attrs.sort_by_key(|entry| entry.id);
+        Self {
+            mask,
+            attrs: attrs.into_boxed_slice(),
+        }
+    }
+
     /// Returns a copy with one mark removed.
     #[must_use]
     pub fn without_mark(&self, id: MarkId) -> Self {

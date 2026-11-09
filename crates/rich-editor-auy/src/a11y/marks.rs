@@ -5,44 +5,43 @@ use alloc::boxed::Box;
 use crate::model::MarkSet;
 use crate::schema::Schema;
 
-use super::build::attr_string;
+use super::attrs::text;
 use super::role::A11yRole;
 
-pub(super) fn mark_attr(
-    schema: &Schema,
+/// Resolves the semantic role and link target of a run in one schema pass.
+///
+/// The role is the first mark with a non-text role in declaration order; the link is the value
+/// of the first mark that declares an `href` attribute, even when that value is absent.
+pub(super) fn marks_role_and_href(
     marks: &MarkSet,
-    mark: &str,
-    attr: &str,
-) -> Option<Box<str>> {
-    let id = schema.mark_id(mark)?;
-    let spec = schema.mark(id)?;
-    let attr_spec = spec.attrs.iter().find(|spec| &*spec.name == attr)?;
-    let attrs = marks.attrs_for(id)?;
-    attr_string(attrs.get(attr_spec.id))
-}
-
-pub(super) fn mark_role(schema: &Schema, marks: &MarkSet) -> A11yRole {
+    schema: &Schema,
+) -> (A11yRole, Option<Box<str>>) {
+    if marks.is_empty() {
+        return (A11yRole::Text, None);
+    }
+    let mut role = None;
+    let mut href = None;
     for spec in schema.marks() {
-        if marks.contains(spec.id)
+        if !marks.contains(spec.id) {
+            continue;
+        }
+        if role.is_none()
             && let Some(a11y) = spec.a11y
             && a11y.role != A11yRole::Text
         {
-            return a11y.role;
+            role = Some(a11y.role);
         }
-    }
-    A11yRole::Text
-}
-
-pub(super) fn mark_href(schema: &Schema, marks: &MarkSet) -> Option<Box<str>> {
-    for spec in schema.marks() {
-        if marks.contains(spec.id)
-            && schema
-                .mark(spec.id)
-                .and_then(|mark| mark.attrs.iter().find(|attr| &*attr.name == "href"))
-                .is_some()
+        if href.is_none()
+            && let Some(attr) = spec.attrs.iter().find(|attr| &*attr.name == "href")
         {
-            return mark_attr(schema, marks, &spec.name, "href");
+            href = Some(match marks.attrs_for(spec.id) {
+                Some(attrs) => text(attrs, Some(attr.id)),
+                None => None,
+            });
+        }
+        if role.is_some() && href.is_some() {
+            break;
         }
     }
-    None
+    (role.unwrap_or(A11yRole::Text), href.flatten())
 }

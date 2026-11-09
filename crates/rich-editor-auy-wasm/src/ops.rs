@@ -8,13 +8,12 @@ use rich_editor_auy::state::{Editor as CoreEditor, Selection};
 use rich_editor_auy::wire::{ParseOptions, from_fragment_json, from_json as parse_document};
 use serde_json::Value;
 
-use crate::dto::{BatchPayload, CellRefJson, Op, SelectionJson};
+use crate::dto::{BatchPayload, CellRefJson, SelectionJson};
 use crate::problem;
 
 /// Parses a batch envelope.
-pub(crate) fn parse_batch(payload: &str) -> Result<Vec<Op>, ProblemDetails> {
+pub(crate) fn parse_batch(payload: &str) -> Result<BatchPayload, ProblemDetails> {
     serde_json::from_str::<BatchPayload>(payload)
-        .map(|batch| batch.ops)
         .map_err(|error| problem::malformed_problem(format!("{error}"), "ops"))
 }
 
@@ -73,16 +72,32 @@ fn cell_ref(cell: CellRefJson) -> CellRef {
 
 /// Decodes a document token tree.
 pub(crate) fn decode_doc(schema: &Schema, value: &Value) -> Result<Doc, ProblemDetails> {
+    decode_doc_with(schema, value, &ParseOptions::default())
+}
+
+/// Decodes a document token tree with explicit decoder options.
+pub(crate) fn decode_doc_with(
+    schema: &Schema,
+    value: &Value,
+    options: &ParseOptions,
+) -> Result<Doc, ProblemDetails> {
     let text = serde_json::to_string(value)
         .map_err(|error| problem::malformed_problem(format!("{error}"), "doc"))?;
-    parse_document(&text, schema, &ParseOptions::default())
-        .map_err(|error| problem::from_parse_error(&error))
+    parse_document(&text, schema, options).map_err(|error| problem::from_parse_error(&error))
 }
 
 /// Decodes a fragment token tree.
 pub(crate) fn decode_fragment(schema: &Schema, value: &Value) -> Result<Fragment, ProblemDetails> {
+    decode_fragment_with(schema, value, &ParseOptions::default())
+}
+
+/// Decodes a fragment token tree with explicit decoder options.
+pub(crate) fn decode_fragment_with(
+    schema: &Schema,
+    value: &Value,
+    options: &ParseOptions,
+) -> Result<Fragment, ProblemDetails> {
     let text = serde_json::to_string(value)
         .map_err(|error| problem::malformed_problem(format!("{error}"), "fragment"))?;
-    from_fragment_json(&text, schema, &ParseOptions::default())
-        .map_err(|error| problem::from_parse_error(&error))
+    from_fragment_json(&text, schema, options).map_err(|error| problem::from_parse_error(&error))
 }

@@ -1,0 +1,12 @@
+error: duplicate doc declaration
+ --> tests/ui/duplicate_doc.rs:4:13
+  |
+4 |       let _ = schema! {
+  |  _____________^
+5 | |         doc { content: "block+" }
+6 | |         doc { content: "block+" }
+7 | |         paragraph { group: "block", content: "text*" }
+8 | |     };
+  | |_____^
+  |
+  = note: this error originates in the macro `schema` (in Nightly builds, run with -Z macro-backtrace for more info)

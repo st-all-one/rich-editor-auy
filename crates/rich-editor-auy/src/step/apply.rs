@@ -34,13 +34,17 @@ pub(super) type Located<'a> = (usize, u32, &'a Arc<Block>);
 
 /// Returns the byte length inserted by a slice.
 pub(super) fn replace_len(slice: &Slice) -> u32 {
-    if !slice.content.is_empty() {
-        return slice.content.size().0;
-    }
-    if let Some(runs) = &slice.runs {
-        return runs.len().0;
-    }
-    u32::try_from(slice.text.len()).unwrap_or(u32::MAX)
+    slice.size()
+}
+
+/// Splits the text block that contains a position.
+///
+/// # Errors
+///
+/// Returns an unsupported error for a structural position and an out-of-bounds error when the
+/// position is outside the document.
+pub(crate) fn split_at(doc: &Doc, at: Pos) -> Result<Doc, StepError> {
+    split_block(doc, at, 0)
 }
 
 /// Applies one step.
@@ -131,6 +135,11 @@ fn replace_owned(doc: Doc, from: Pos, to: Pos, slice: &Slice) -> Result<Doc, Ste
         return Err(StepError::OutOfBounds {
             position: from.0,
             size: doc.size().0,
+        });
+    }
+    if slice.open_start > 0 || slice.open_end > 0 {
+        return Err(StepError::Unsupported {
+            operation: Box::from("open_slice"),
         });
     }
     if !slice.content.is_empty() {

@@ -14,6 +14,12 @@ use super::options::ParseOptions;
 use super::parser::decode_doc;
 use super::writer::{write_doc_into, write_string};
 
+/// Version written by [`Envelope::to_json_into`].
+pub const ENVELOPE_VERSION: i64 = 2;
+
+/// Legacy version accepted and migrated on read.
+const LEGACY_VERSION: i64 = 1;
+
 /// A durable envelope around a canonical document.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Envelope {
@@ -43,7 +49,7 @@ impl Envelope {
     ///
     /// Propagates formatting failures.
     pub fn to_json_into(&self, schema: &Schema, out: &mut impl Write) -> fmt::Result {
-        out.write_str("{\"format\":\"rich-editor-auy\",\"version\":1,\"schema_fingerprint\":")?;
+        out.write_str("{\"format\":\"rich-editor-auy\",\"version\":2,\"schema_fingerprint\":")?;
         write_string(schema.fingerprint(), out)?;
         if let Some(doc_id) = &self.doc_id {
             out.write_str(",\"doc_id\":")?;
@@ -76,14 +82,16 @@ impl Envelope {
             .get("version")
             .and_then(JsonValue::as_i64)
             .ok_or_else(|| EditError::Parse(ParseError::new("missing_version", 0)))?;
-        if version != 1 {
+        if version != ENVELOPE_VERSION && version != LEGACY_VERSION {
             return Err(EditError::Parse(ParseError::new("unsupported_version", 0)));
         }
         let fingerprint = value
             .get("schema_fingerprint")
             .and_then(JsonValue::as_str)
             .ok_or_else(|| EditError::Parse(ParseError::new("missing_fingerprint", 0)))?;
-        if fingerprint != schema.fingerprint() {
+        // Legacy envelopes carry the retired basic-schema fingerprint; their structure is
+        // validated by the full schema during decoding instead.
+        if version == ENVELOPE_VERSION && fingerprint != schema.fingerprint() {
             return Err(EditError::Step(crate::error::StepError::ContentMismatch {
                 path: Box::from("schema_fingerprint"),
             }));
@@ -97,6 +105,23 @@ impl Envelope {
             .and_then(JsonValue::as_str)
             .and_then(DocId::new);
         Ok(Self { doc, doc_id })
+    }
+
+    /// Migrates a version 1 envelope to the current version.
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error when the input is not a version 1 envelope or contains a token the
+    /// full schema cannot represent.
+    pub fn migrate_v1_to_full(
+        input: &str,
+        schema: &Schema,
+        options: &ParseOptions,
+    ) -> Result<String, EditError> {
+        let envelope = Self::from_json(input, schema, options)?;
+        envelope
+            .to_json_string(schema)
+            .map_err(|_| EditError::Parse(ParseError::new("envelope_write", 0)))
     }
 
     /// Serializes the envelope to a string.

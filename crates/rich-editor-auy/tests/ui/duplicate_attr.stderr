@@ -1,0 +1,11 @@
+error: duplicate attribute `href`
+ --> tests/ui/duplicate_attr.rs:4:13
+  |
+4 |       let _ = schema! {
+  |  _____________^
+5 | |         doc { content: "block+" }
+6 | |         link { mark, attrs: { href: str, href: str } }
+7 | |     };
+  | |_____^
+  |
+  = note: this error originates in the macro `schema` (in Nightly builds, run with -Z macro-backtrace for more info)

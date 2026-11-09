@@ -1,4 +1,4 @@
-.PHONY: all fmt clippy test visits doc a11y file-length links zero-style package package-wasm check check-ecosystem deny audit machete miri fuzz bench wasm examples clean
+.PHONY: all fmt clippy test visits doc a11y file-length links zero-style package package-wasm package-wasm-publish check check-ecosystem deny audit machete miri fuzz bench bench-instructions wasm examples clean php
 
 all: check
 
@@ -34,13 +34,25 @@ package:
 	cargo package -p rich-editor-auy-macros --locked --allow-dirty
 
 package-wasm:
-	cargo package -p rich-editor-auy-wasm --locked --allow-dirty
+	# The crates.io index cannot resolve the unpublished core, so the offline gate lists contents.
+	cargo package --list -p rich-editor-auy-wasm --locked --allow-dirty > /dev/null
 
-check: fmt clippy test visits doc a11y file-length links zero-style package
+package-wasm-publish:
+	cargo package -p rich-editor-auy-wasm --locked --allow-dirty --no-verify
+
+check: fmt clippy test visits doc a11y file-length links zero-style package package-wasm
 
 check-ecosystem:
 	@if [ -f packages/ts/deno.json ]; then cd packages/ts && deno task check && deno task publish:dry; fi
-	@if [ -f packages/php/composer.json ] && command -v composer >/dev/null 2>&1; then cd packages/php && composer validate --strict && composer audit; fi
+	@if [ -f packages/php/composer.json ]; then \
+		if command -v composer >/dev/null 2>&1; then \
+			cd packages/php && composer validate --strict && composer audit; \
+		elif command -v docker >/dev/null 2>&1; then \
+			$(MAKE) php; \
+		else \
+			echo "composer and docker unavailable; PHP gate skipped locally"; \
+		fi; \
+	fi
 
 deny:
 	@if command -v cargo-deny >/dev/null 2>&1; then cargo deny check; else echo "cargo-deny not installed; skipped locally"; fi
@@ -55,10 +67,17 @@ miri:
 	@if command -v cargo +nightly miri >/dev/null 2>&1; then cargo +nightly miri test -p rich-editor-auy --test miri_smoke; else echo "miri not installed; skipped locally"; fi
 
 fuzz:
-	@if [ -d fuzz ]; then cd fuzz && cargo +nightly fuzz run json_parse -- -max_total_time=30 && cargo +nightly fuzz run a11y_tree -- -max_total_time=30 && cargo +nightly fuzz run apply_step -- -max_total_time=30; fi
+	@if [ -d fuzz ]; then cd fuzz && cargo +nightly fuzz run --fuzz-dir . json_parse -- -max_total_time=30 && cargo +nightly fuzz run --fuzz-dir . a11y_tree -- -max_total_time=30 && cargo +nightly fuzz run --fuzz-dir . apply_step -- -max_total_time=30 && cargo +nightly fuzz run --fuzz-dir . round_trip -- -max_total_time=30 && cargo +nightly fuzz run --fuzz-dir . fragment -- -max_total_time=30; fi
+
+php:
+	docker build -t rich-editor-auy-php packages/php
+	docker run --rm rich-editor-auy-php
 
 bench:
-	cd bench && cargo bench --offline
+	cd bench && cargo bench --bench hot --bench wire
+
+bench-instructions:
+	./scripts/bench_instructions.sh
 
 wasm:
 	./scripts/build_wasm.sh

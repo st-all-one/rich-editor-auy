@@ -10,7 +10,9 @@ no UI opinions.
 
 </div>
 
-> **Status:** MVP implementation (F0–F3.5 materialized; wire/limits/a11y hardening applied; S2 apply target met with chunked blocks; S1/wire/a11y targets open). The Rust core,
+> **Status:** MVP implementation (F0–F3.5 materialized; wire/limits/a11y hardening applied; the
+> S2 wire and accessibility targets are met and the hot path carries a calibrated allocation
+> ceiling). The Rust core,
 > WASM artifact, Deno/JSR packages, DOM adapter, Composer package and CLI are present. `make check`
 > is the local gate; measured performance deviations and open design items live in
 > [`DIVERGENCES.md`](DIVERGENCES.md). The planning documents are written in Portuguese; the public
@@ -107,7 +109,9 @@ graph LR
 
 Canonical JSON is the cross-language ABI. PHP stores and transports bytes; TypeScript runs the core
 as WASM. Neither SDK reimplements the schema or the edit algebra. The official distribution is a
-crates.io crate, a WASM artifact, a Composer package and a Deno 2.0/JSR workspace.
+crates.io crate, a WASM artifact, a Composer package and a Deno 2.0/JSR workspace. Release order is
+`rich-editor-auy` → `rich-editor-auy-macros` → `rich-editor-auy-wasm` → JSR/Composer, because the
+WASM crate depends on the published core.
 
 - **TypeScript/Deno 2.0:** `@rich-editor-auy/core` (WASM, no DOM), `@rich-editor-auy/dom`
   (required adapter for UI; it does not reimplement semantics), `@rich-editor-auy/schema` (presets
@@ -147,6 +151,79 @@ view.dispatch(editor);
 applies core commands and calls `editor.dispatch(nextState)`.
 
 No CSS import. The host remains yours.
+
+## Clipboard and IME
+
+Copy, cut and paste are core operations, not adapter guesses. A slice carries inline runs with
+their marks, or a detached block sequence with block anchors removed; a paste validates the slice
+against the schema before applying it as one transaction.
+
+```rust
+use rich_editor_auy::Editor;
+use rich_editor_auy::pos::{Pos, Range};
+
+let mut editor = Editor::from_json(saved_json)?;
+let copy = editor.slice(Range::new(Pos(1), Pos(5)))?;      // runs + marks, or whole blocks
+editor.delete_range(Range::new(Pos(1), Pos(5)))?;          // caret lands where content was
+editor.insert_slice(Pos(1), &copy)?;                       // one history entry
+let wire = copy.to_json_string(editor.schema());           // canonical slice JSON
+```
+
+| Operation | Inline range | Range across blocks |
+|---|---|---|
+| `slice` | runs and marks | partial edge blocks plus every complete block, no `id` |
+| `insert_slice` | spliced into the host text block | host block splits first, so the caret keeps its place |
+| `replace_slice` | one text block only | both ends must be block boundaries |
+| `delete_range` | inline removal | surviving edge fragments merge, empty document gets the filler |
+
+IME composition is one history group: `beginComposition` → `updateComposition` → `commitComposition`
+(or `cancelComposition`), with `isComposing()` while it is open. The DOM adapter maps
+`compositionstart`/`update`/`end` onto those calls, so undo never rewinds one Japanese character at
+a time.
+
+Renderer notes: `mount` defaults to native semantics (`<h2>`, `<ul>`, `<a href>`, `<img alt>`);
+`semantics: "neutral"` renders `div`/`span` plus the role, name and level from the a11y tree. The
+adapter maps the native selection to UTF-8 byte positions through `data-auy-from`/`data-auy-to`, and
+announces remote changes in a polite live region.
+
+## Declarative schemas
+
+`rich-editor-auy-macros` carries an optional `schema!` front-end. It expands to builder calls, so
+the runtime builder stays the single source of truth and every check runs in both paths.
+
+```rust
+use rich_editor_auy_macros::schema;
+
+schema! {
+    pub mod kinds;
+    doc { content: "block+", attrs: { lang: str }, a11y: { role: document } }
+    paragraph {
+        group: "block",
+        content: "text*",
+        marks: "_",
+        a11y: { role: paragraph, name: text }
+    }
+    heading {
+        group: "block",
+        content: "text*",
+        marks: "_",
+        attrs: { level: int(1..=6) = 1 },
+        a11y: { role: heading(2), name: text, level: "level" }
+    }
+    text { inline: true, a11y: { role: text, name: text } }
+    link { mark, attrs: { href: str required }, a11y: { role: link, name: text } }
+}
+
+let schema = kinds::build()?;
+assert_eq!(schema.node_kind("heading"), Some(kinds::NODE_HEADING));
+assert_eq!(kinds::NODE_HEADING_LEVEL.0, 1);
+```
+
+Without the leading `pub mod NAME;`, the macro is an expression (`let schema = schema! { ... };`).
+Attributes accept `str`, `bool`, `ref`, `any`, `int(min..=max)`, `enum("a", "b")`, `list(type)`,
+`map(type)` and an optional `required` marker; defaults are literals for `str`, `bool`, `int` and
+`enum`. `a11y` declares the role, name policy, `alt` policy and the attribute that carries a
+heading level. Invalid declarations fail at compile time, and `tests/ui` locks the messages.
 
 ## Planning dossier
 

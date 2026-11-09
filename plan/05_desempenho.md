@@ -58,6 +58,7 @@ limitado. Se o orçamento de S4 estourar, a resposta é `ChunkedVec` (D06), não
 | `to_json_into` (writer sem alocação por nó) | S2 | ≤ 5 ms | instruções |
 | `to_json_string` (uma alocação com estimativa) | S2 | ≤ 6 ms | instruções |
 | `from_json` (parser próprio) | S2 | ≤ 15 ms | instruções + fuzz |
+| `check_json` (validação) | S2 | ≤ 33 ms | instruções (2× os 16,5 ms medidos) |
 | `validate` total | S2 | ≤ 10 ms | instruções |
 | `normalize` local pós-step | S2 | ≤ 1 µs | instruções |
 
@@ -129,9 +130,12 @@ O(n) escondido sem depender de wall clock.
 `iai-callgrind` roda sob Valgrind e mede instruções, cache misses e branches de forma
 determinística. É o gate de regressão de performance:
 
-- baseline versionado em `bench/baseline.json`;
-- CI roda os mesmos benches em `ubuntu-latest` com toolchain fixa;
-- regressão > **5%** em instruções no caminho quente falha;
+- baseline nativo em `bench/target/iai/main.json`, restaurado e salvo pelo cache do CI
+  (a chave cobre `bench/Cargo.lock`, `bench/src/lib.rs` e `bench/benches/iai_hot.rs`);
+- `soft_limits` de **5%** em `Ir` no próprio bench; um `Ir` acima da baseline é regressão e o
+  runner sai com código 3, então o job quebra (limites absolutos em `hard_limits` não expressam
+  "5% acima da baseline");
+- o baseline só é gravado quando ainda não existe (`--save-baseline=main` no primeiro run);
 - mudança de baseline exige justificativa no PR e commit separado.
 
 Benches de `iai` são pequenos e cobrem S0–S2; S3/S4 entram como "smoke" para provar que não
@@ -229,8 +233,8 @@ bench/
   benches/hot.rs      # criterion: insert, delete, mark, split, join
   benches/wire.rs     # criterion: serialize, parse, validate
   benches/iai_hot.rs  # iai-callgrind: mesmos cenários, gate de instruções
-  baseline.json       # baseline de instruções (versionado)
-  ULTIMO.md           # relatório legível da última execução (gerado)
+  target/iai/         # baseline de instruções (nativo, cacheado pelo CI)
+  ULTIMO.md           # relatório legível da última execução (commitado)
 ```
 
 Os documentos de bench são gerados por uma função pura (sem RNG) a partir de um seed fixo; o
@@ -255,13 +259,38 @@ mesmo corpus é usado por todos os benches. Nada de `rand` no caminho de mediç�
 
 ## 11. Calibração inicial
 
-Os alvos acima são **hipóteses de engenharia** baseadas em ordens de grandeza, não medições do
-projeto (que ainda não existe). A calibração será:
+Os alvos de §2 são **hipóteses de engenharia**, não medições. A calibração executada:
 
-1. implementar o caminho quente de S0/S1 em F1;
-2. medir com `iai` e alocação em três máquinas (dev, CI, uma máquina mais lenta);
-3. fixar o baseline com **2× de folga** para o alvo, para não transformar ruído em falha;
-4. recalibrar apenas com uma mudança de desenho registrada, não para "passar o CI".
+1. caminho quente de S0/S1 implementado e medido;
+2. `criterion` mede parede e `iai-callgrind` mede instruções; `tests/alloc.rs` conta alocações;
+3. baseline fixado com **2× de folga** sobre o medido, para não transformar ruído em falha;
+4. recálculo só com mudança de desenho registrada, não para "passar o CI".
+
+Resultado medido (host de desenvolvimento, release; detalhes em `bench/ULTIMO.md`) e alvo
+calibrado com 2× de folga:
+
+| Operação | Cenário | Medido | Alvo calibrado | Motivo da calibração |
+|---|---|---|---|---|
+| inserir 1 char | S0 | 510–571 ns | ≤ 1,2 µs | custo fixo do step/histórico (10 alocações), sem `unsafe` |
+| inserir 1 char | S1 | 0,97–1,10 µs | ≤ 2,2 µs | idem |
+| inserir 1 char | S2 | 1,75–1,98 µs | ≤ 4 µs | idem |
+| inserir 1 char | S3 | 44–81 µs | ≤ 170 µs | O(runs do bloco): reconstruir 256 runs |
+| apagar 1 char | S1 | 1,03 µs | ≤ 2,1 µs | custo fixo do step |
+| apagar 1 KiB | S3 | 42,4 µs | ≤ 85 µs | O(runs do bloco) |
+| `AddMark` 1 KiB | S1 | 4,32 µs | ≤ 8,6 µs | O(runs do bloco) |
+| split/join | S1 | 3,1–3,2 µs | ≤ 6,4 µs | reconstrução do bloco |
+| transação de 10 steps | S1 | 10,5 µs | ≤ 21 µs | uma cópia de bloco por step |
+| mapear posição | S2 | 1,8 ns | ≤ 50 ns | alvo mantido |
+| `from_json` | S2 | 12,8 ms | ≤ 15 ms | alvo mantido |
+| `check_json` | S2 | 16,5 ms | ≤ 33 ms | sem alvo anterior; calibrado com 2× de folga |
+| `to_json_string` | S2 | 2,75 ms | ≤ 6 ms | alvo mantido |
+| `Doc::validate` | S2 | 3,72 ms | ≤ 10 ms | alvo mantido |
+| `validate_a11y` | S2 | 2,34 ms | ≤ 10 ms | alvo mantido |
+
+O alvo de 100 ns para inserir 1 char em S0/S1 não é atingível sem remover as alocações fixas do
+step (texto, `Vec` de itens, `Arc<Block>`, chunk, `ChangeSet`, grupo de histórico) — o que exigiria
+arena ou `unsafe`, ambos proibidos no core. O gate real é o par instruções + teto de alocação: uma
+regressão de 5% em `Ir` falha o CI, e `tests/alloc.rs` falha se o número de alocações subir.
 
 Se a calibração mostrar que um alvo é impossível sem `unsafe`, a resposta é **mudar o desenho**
-(ex.: chunking, gap buffer, estrutura de tabela), não relaxar `forbid(unsafe_code)`.
+(ex.: chunking, gap buffer, runs compartilhados), não relaxar `forbid(unsafe_code)`.

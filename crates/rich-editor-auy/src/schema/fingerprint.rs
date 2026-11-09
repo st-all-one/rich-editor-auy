@@ -2,6 +2,8 @@
 
 use alloc::string::String;
 
+use crate::hex::hex;
+
 use super::{DocSpec, MarkSpec, NodeSpec};
 
 #[allow(
@@ -71,18 +73,4 @@ pub(super) fn fingerprint(doc: &DocSpec, nodes: &[NodeSpec], marks: &[MarkSpec])
     let mut hasher = blake3::Hasher::new_derive_key("rich-editor-auy/schema/v1");
     hasher.update(text.as_bytes());
     hex(hasher.finalize().as_bytes())
-}
-
-fn hex(bytes: &[u8]) -> String {
-    const DIGITS: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(bytes.len().saturating_mul(2));
-    for byte in bytes {
-        let high = usize::from(byte >> 4);
-        let low = usize::from(byte & 0x0f);
-        if let (Some(high), Some(low)) = (DIGITS.get(high), DIGITS.get(low)) {
-            out.push(char::from(*high));
-            out.push(char::from(*low));
-        }
-    }
-    out
 }

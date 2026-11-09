@@ -1,7 +1,7 @@
 {
   "workspace": ["./packages/core", "./packages/schema", "./packages/dom"],
   "tasks": {
-    "check": "deno fmt --check && deno lint && deno check . && deno test --allow-read",
+    "check": "deno fmt --check && deno lint && deno check . && deno test --allow-read --allow-env --allow-net",
     "publish:dry": "deno publish --dry-run --allow-dirty"
   },
   "compilerOptions": {

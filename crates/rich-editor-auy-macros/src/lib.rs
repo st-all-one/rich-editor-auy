@@ -7,37 +7,89 @@
     clippy::iter_with_drain,
     clippy::needless_pass_by_value,
     clippy::unnecessary_map_or,
-    clippy::unnecessary_option_map_or_else,
     clippy::unnecessary_wraps,
     reason = "token parsing is a bounded build-time front-end that reports errors as compile_error"
 )]
 //!
-//! The runtime builder remains the source of truth. This crate translates the declarative block
-//! into builder calls, so both paths compile through the same validation.
+//! The runtime builder remains the source of truth: this crate translates the declarative
+//! block into builder calls, so both paths compile through the same validation.
 //!
-//! Supported form:
+//! # Expression mode
+//!
+//! ```text
+//! let schema = schema! {
+//!     doc { content: "block+", attrs: { lang: str } }
+//!     paragraph { group: "block", content: "text*", marks: "_",
+//!                 a11y: { role: paragraph, name: text } }
+//!     heading { group: "block", content: "text*", marks: "_",
+//!               attrs: { level: int(1..=6) = 1 },
+//!               a11y: { role: heading(2), name: text, level: "level" } }
+//!     text { inline: true, a11y: { role: text, name: text } }
+//!     strong { mark }
+//!     link { mark, attrs: { href: str required },
+//!            a11y: { role: link, name: text } }
+//! };
+//! ```
+//!
+//! # Module mode
+//!
+//! A leading `pub mod NAME;` (or `mod NAME;`) turns the macro into an item that declares typed
+//! accessors plus `build()`:
 //!
 //! ```text
 //! schema! {
+//!     pub mod kinds;
 //!     doc { content: "block+" }
 //!     paragraph { group: "block", content: "text*", marks: "_" }
-//!     heading { group: "block", content: "text*", attrs: { level: int(1..=6) = 1 } }
-//!     text { inline: true }
-//!     strong { mark }
-//!     link { mark, attrs: { href: str } }
+//! }
+//!
+//! kinds::NODE_PARAGRAPH;  // NodeKind(0)
+//! kinds::build();         // Result<Schema, SchemaError>
+//! ```
+//!
+//! Accessor names are `NODE_<NODE>`, `NODE_<NODE>_<ATTR>`, `DOC_<ATTR>`, `MARK_<MARK>` and
+//! `MARK_<MARK>_<ATTR>`, uppercased with underscores between words.
+//!
+//! # Attribute grammar
+//!
+//! ```text
+//! attrs: { name: str, flag: bool, target: ref, payload: any,
+//!          level: int(1..=6) = 1, role: enum("a", "b"),
+//!          tags: list(str), meta: map(str), href: str required }
+//! ```
+//!
+//! Defaults are accepted for `str`, `bool`, `int`, and `enum` literals only. `id` is reserved
+//! for the block anchor and cannot be declared.
+//!
+//! # Accessibility grammar
+//!
+//! ```text
+//! a11y: {
+//!     role: document | text | paragraph | list | list_item | quote | code | code_block |
+//!           table | table_caption | table_row | table_cell | table_header | link | image |
+//!           figure | caption | video | audio | attachment | separator | heading(1..=6),
+//!     name: none | text | required | attr("<attribute>"),
+//!     alt: required | optional | not_applicable,
+//!     level: "<attribute>"
 //! }
 //! ```
+//!
+//! A heading requires `level`. Roles and policies are validated by the builder through
+//! `A11ySpec::error_code`, so the macro never duplicates that check.
 
+mod a11y;
+mod accessors;
+mod attrs;
+mod expand;
 mod parse;
 
 use proc_macro::TokenStream;
-use proc_macro2::{Delimiter, Group, Literal, TokenStream as TokenStream2, TokenTree};
-
-use crate::parse::{
-    Cursor, Entry, bool_literal, entries, parse_attr_type, parse_default, single_group,
-    string_literal,
-};
+use proc_macro2::{Delimiter, Literal, TokenStream as TokenStream2};
 use quote::quote;
+
+use crate::accessors::expand_module;
+use crate::expand::{DocDecl, MarkDecl, NodeDecl, expand_doc, expand_mark, expand_node};
+use crate::parse::{Cursor, entries};
 
 /// Declares a schema using the canonical builder.
 #[proc_macro]
@@ -53,6 +105,7 @@ pub fn schema(input: TokenStream) -> TokenStream {
 
 fn expand(input: TokenStream2) -> Result<TokenStream2, String> {
     let mut cursor = Cursor::new(input);
+    let module = cursor.module();
     let mut doc = None;
     let mut nodes = Vec::new();
     let mut marks = Vec::new();
@@ -60,152 +113,41 @@ fn expand(input: TokenStream2) -> Result<TokenStream2, String> {
         let name = cursor.expect_ident("declaration")?;
         let body = cursor.expect_group(Delimiter::Brace, "declaration body")?;
         if name == "doc" {
-            doc = Some(expand_doc(body)?);
-        } else {
-            let entries = entries(body)?;
-            if entries.iter().any(|entry| entry.name == "mark") {
-                marks.push(expand_mark(name, entries)?);
-            } else {
-                nodes.push(expand_node(name, entries)?);
+            if doc.is_some() {
+                return Err("duplicate doc declaration".into());
             }
+            doc = Some(expand_doc(body)?);
+            continue;
+        }
+        let entries = entries(body)?;
+        if entries.iter().any(|entry| entry.name == "mark") {
+            marks.push(expand_mark(name, entries)?);
+        } else {
+            nodes.push(expand_node(name, entries)?);
         }
     }
-    let doc = doc.map_or_else(
-        || quote! { ::rich_editor_auy::schema::DocSpec::new() },
-        |tokens| tokens,
-    );
+    let doc = doc.unwrap_or(DocDecl {
+        tokens: quote! { ::rich_editor_auy::schema::DocSpec::new() },
+        attrs: Vec::new(),
+    });
+    let builder = builder_expr(&doc, &nodes, &marks);
+    Ok(match module {
+        Some(module) => expand_module(&module, &doc, &nodes, &marks, &builder),
+        None => builder,
+    })
+}
+
+/// Returns the builder expression shared by both modes.
+fn builder_expr(doc: &DocDecl, nodes: &[NodeDecl], marks: &[MarkDecl]) -> TokenStream2 {
+    let doc = &doc.tokens;
     let mut calls = quote! { ::rich_editor_auy::schema::Schema::builder().doc(#doc) };
     for node in nodes {
-        calls = quote! { #calls.node(#node) };
+        let tokens = &node.tokens;
+        calls = quote! { #calls.node(#tokens) };
     }
     for mark in marks {
-        calls = quote! { #calls.mark(#mark) };
+        let tokens = &mark.tokens;
+        calls = quote! { #calls.mark(#tokens) };
     }
-    Ok(quote! { #calls.build() })
-}
-
-fn expand_doc(body: Group) -> Result<TokenStream2, String> {
-    let mut spec = quote! { ::rich_editor_auy::schema::DocSpec::new() };
-    for entry in entries(body)? {
-        match entry.name.as_str() {
-            "content" => {
-                let value = string_literal(&entry.value)?;
-                spec = quote! { #spec.content(#value) };
-            }
-            "attrs" => {
-                for attr in attr_entries(entry.value)? {
-                    spec = quote! { #spec.attr(#attr) };
-                }
-            }
-            other => return Err(format!("unsupported doc field `{other}`")),
-        }
-    }
-    Ok(spec)
-}
-
-fn expand_node(name: String, entries: Vec<Entry>) -> Result<TokenStream2, String> {
-    let name = Literal::string(&name);
-    let mut spec = quote! { ::rich_editor_auy::schema::NodeSpec::new(#name) };
-    for entry in entries {
-        match entry.name.as_str() {
-            "content" => {
-                let value = string_literal(&entry.value)?;
-                spec = quote! { #spec.content(#value) };
-            }
-            "group" => {
-                let value = string_literal(&entry.value)?;
-                spec = quote! { #spec.group(#value) };
-            }
-            "marks" => {
-                let value = string_literal(&entry.value)?;
-                if value.to_string() == "\"_\""
-                    || value.to_string() == "\"all\""
-                    || value.to_string() == "\"*\""
-                {
-                    spec = quote! { #spec.marks_all() };
-                } else {
-                    return Err("marks supports only `_`, `all` or `*`".into());
-                }
-            }
-            "inline" => {
-                if bool_literal(&entry.value)? {
-                    spec = quote! { #spec.inline() };
-                }
-            }
-            "atom" => {
-                if bool_literal(&entry.value)? {
-                    spec = quote! { #spec.atom() };
-                }
-            }
-            "defining" => {
-                if bool_literal(&entry.value)? {
-                    spec = quote! { #spec.defining() };
-                }
-            }
-            "isolating" => {
-                if bool_literal(&entry.value)? {
-                    spec = quote! { #spec.isolating() };
-                }
-            }
-            "attrs" => {
-                for attr in attr_entries(entry.value)? {
-                    spec = quote! { #spec.attr(#attr) };
-                }
-            }
-            other => return Err(format!("unsupported node field `{other}`")),
-        }
-    }
-    Ok(spec)
-}
-
-fn expand_mark(name: String, entries: Vec<Entry>) -> Result<TokenStream2, String> {
-    let name = Literal::string(&name);
-    let mut spec = quote! { ::rich_editor_auy::schema::MarkSpec::new(#name) };
-    for entry in entries {
-        match entry.name.as_str() {
-            "mark" => {}
-            "inclusive" => {
-                let value = bool_literal(&entry.value)?;
-                spec = quote! { #spec.inclusive(#value) };
-            }
-            "excludes" => {
-                let value = string_literal(&entry.value)?;
-                spec = quote! { #spec.excludes(#value) };
-            }
-            "attrs" => {
-                for attr in attr_entries(entry.value)? {
-                    spec = quote! { #spec.attr(#attr) };
-                }
-            }
-            other => return Err(format!("unsupported mark field `{other}`")),
-        }
-    }
-    Ok(spec)
-}
-
-fn attr_entries(value: TokenStream2) -> Result<Vec<TokenStream2>, String> {
-    let group = single_group(value, Delimiter::Brace, "attrs")?;
-    let mut attrs = Vec::new();
-    for entry in entries(group)? {
-        let mut tokens = entry.value.into_iter().peekable();
-        let kind = parse_attr_type(&mut tokens)?;
-        let default = if tokens.peek().is_some() {
-            let Some(TokenTree::Punct(punct)) = tokens.next() else {
-                return Err("expected `=` before attribute default".into());
-            };
-            if punct.as_char() != '=' {
-                return Err("expected `=` before attribute default".into());
-            }
-            Some(parse_default(tokens.collect())?)
-        } else {
-            None
-        };
-        let name = Literal::string(&entry.name);
-        let mut attr = quote! { ::rich_editor_auy::schema::AttrSpec::new(#name, #kind) };
-        if let Some(default) = default {
-            attr = quote! { #attr.with_default(#default) };
-        }
-        attrs.push(attr);
-    }
-    Ok(attrs)
+    quote! { #calls.build() }
 }

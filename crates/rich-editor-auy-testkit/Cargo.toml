@@ -11,7 +11,7 @@ authors.workspace = true
 publish = false
 
 [dependencies]
-rich-editor-auy = { path = "../rich-editor-auy" }
+rich-editor-auy = { path = "../rich-editor-auy", features = ["migration"] }
 
 [lints]
 workspace = true

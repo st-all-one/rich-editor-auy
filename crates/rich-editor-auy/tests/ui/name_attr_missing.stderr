@@ -1,0 +1,11 @@
+error: unknown attribute `missing`
+ --> tests/ui/name_attr_missing.rs:4:13
+  |
+4 |       let _ = schema! {
+  |  _____________^
+5 | |         doc { content: "block+" }
+6 | |         widget { inline: true, atom: true, a11y: { role: image, name: attr("missing") } }
+7 | |     };
+  | |_____^
+  |
+  = note: this error originates in the macro `schema` (in Nightly builds, run with -Z macro-backtrace for more info)

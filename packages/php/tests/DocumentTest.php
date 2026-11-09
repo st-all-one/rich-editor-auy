@@ -30,11 +30,18 @@ final class DocumentTest extends TestCase
         Document::fromBytes($bytes);
     }
 
+    public function testAcceptsLegacyVersionOneEnvelope(): void
+    {
+        $bytes = '{"format":"rich-editor-auy","version":1,"schema_fingerprint":"' . str_repeat('a', 64) . '","doc":{"type":"doc","content":[]}}';
+        $document = Document::fromBytes($bytes);
+        self::assertSame($bytes, $document->bytes());
+    }
+
     public function testRejectsFingerprintMismatch(): void
     {
         $envelope = new \RichEditorAuy\Envelope(
             'rich-editor-auy',
-            1,
+            2,
             str_repeat('a', 64),
             [],
         );

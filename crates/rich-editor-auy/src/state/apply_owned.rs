@@ -4,8 +4,9 @@ use alloc::vec::Vec;
 
 use crate::step::{Mapping, apply_step_owned};
 
+use super::change_builder::ChangeBuilder;
 use super::history::Group;
-use super::{Applied, ApplyError, ChangeSet, EditorState, Transaction, step_bytes};
+use super::{Applied, ApplyError, EditorState, Transaction, step_bytes};
 
 impl EditorState {
     /// Applies a transaction by value, mutating the document in place when it is uniquely owned.
@@ -41,10 +42,12 @@ impl EditorState {
         let mut doc = doc;
         let mut inverse = Vec::new();
         let mut mapping = Mapping::identity();
+        let mut builder = ChangeBuilder::new();
         for step in &steps {
             if step.is_noop() {
                 continue;
             }
+            builder.push(step, &doc);
             inverse.push(step.invert(&doc)?);
             doc = apply_step_owned(doc, &schema, step)?;
             mapping = mapping.with_map(step.step_map());
@@ -65,7 +68,7 @@ impl EditorState {
             composition,
             next_composition,
         };
-        let changes = ChangeSet::from_steps(&state.doc, &steps, selection != state_selection);
+        let changes = builder.finish(&state.doc, selection != state_selection);
         if add_to_history && !inverse.is_empty() {
             let bytes = step_bytes(&steps).saturating_add(step_bytes(&inverse));
             state.history.record(Group {

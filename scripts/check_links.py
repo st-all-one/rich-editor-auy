@@ -38,6 +38,10 @@ def main() -> int:
             if not target:
                 continue
             resolved = (document.parent / target).resolve()
+            # `../ref/` points at the research corpus, a local-only checkout ignored by git
+            # (`.gitignore`), so its absence is not a broken doc link.
+            if resolved.is_relative_to(ROOT / "ref"):
+                continue
             if not resolved.exists():
                 print(f"{document.relative_to(ROOT)}: broken link {target}", file=sys.stderr)
                 failures += 1

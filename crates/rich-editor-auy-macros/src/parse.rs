@@ -1,68 +1,32 @@
 #![allow(
     clippy::redundant_pub_crate,
-    reason = "the module is private; its items are shared within the proc-macro crate"
+    reason = "the module is private; its items are crate-visible on purpose"
+)]
+//! Token helpers shared by the schema front-end.
+#![allow(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "token parsing over a bounded, validated stream"
 )]
 
-//! Declarative token parser for `schema!`.
-
 use proc_macro2::{Delimiter, Group, Literal, TokenStream as TokenStream2, TokenTree};
-use quote::{ToTokens, quote};
+use quote::ToTokens;
 
-pub(crate) fn parse_attr_type(
-    tokens: &mut impl Iterator<Item = TokenTree>,
-) -> Result<TokenStream2, String> {
-    let Some(TokenTree::Ident(kind)) = tokens.next() else {
-        return Err("expected attribute type".into());
-    };
-    match kind.to_string().as_str() {
-        "str" => Ok(quote! { ::rich_editor_auy::schema::AttrType::Str }),
-        "bool" => Ok(quote! { ::rich_editor_auy::schema::AttrType::Bool }),
-        "ref" => Ok(quote! { ::rich_editor_auy::schema::AttrType::Ref }),
-        "any" => Ok(quote! { ::rich_editor_auy::schema::AttrType::Any }),
-        "int" => {
-            let Some(TokenTree::Group(range)) = tokens.next() else {
-                return Err("int requires `(min..=max)`".into());
-            };
-            let parts = split_top_level(range.stream(), "..=")?;
-            if parts.len() != 2 {
-                return Err("int requires `(min..=max)`".into());
-            }
-            let min = int_literal(parts[0].clone())?;
-            let max = int_literal(parts[1].clone())?;
-            Ok(quote! {
-                ::rich_editor_auy::schema::AttrType::Int { min: #min, max: #max }
-            })
-        }
-        other => Err(format!("unsupported attribute type `{other}`")),
+/// One `name: value` pair inside a declaration body.
+#[derive(Debug)]
+pub(crate) struct Entry {
+    pub(crate) name: String,
+    pub(crate) value: TokenStream2,
+}
+
+impl Entry {
+    /// Returns the entry when it is the same kind of declaration body.
+    pub(crate) fn group(&self, delimiter: Delimiter, what: &str) -> Result<Group, String> {
+        single_group(self.value.clone(), delimiter, what)
     }
 }
 
-pub(crate) fn parse_default(tokens: TokenStream2) -> Result<TokenStream2, String> {
-    let mut iter = tokens.into_iter();
-    let Some(token) = iter.next() else {
-        return Err("empty attribute default".into());
-    };
-    if iter.next().is_some() {
-        return Err("attribute default must be a literal".into());
-    }
-    match token {
-        TokenTree::Literal(literal) => {
-            let text = literal.to_string();
-            if text.starts_with('"') {
-                Ok(quote! { ::rich_editor_auy::model::AttrValue::Str(#literal.into()) })
-            } else if text == "true" || text == "false" {
-                let value: bool = text == "true";
-                Ok(quote! { ::rich_editor_auy::model::AttrValue::Bool(#value) })
-            } else if let Ok(value) = text.parse::<i64>() {
-                Ok(quote! { ::rich_editor_auy::model::AttrValue::Int(#value) })
-            } else {
-                Err("unsupported attribute default".into())
-            }
-        }
-        _ => Err("attribute default must be a literal".into()),
-    }
-}
-
+/// Returns an integer literal.
 pub(crate) fn int_literal(stream: TokenStream2) -> Result<Literal, String> {
     let mut iter = stream.into_iter();
     let Some(TokenTree::Literal(literal)) = iter.next() else {
@@ -74,6 +38,7 @@ pub(crate) fn int_literal(stream: TokenStream2) -> Result<Literal, String> {
     Ok(literal)
 }
 
+/// Returns a string literal.
 pub(crate) fn string_literal(stream: &TokenStream2) -> Result<Literal, String> {
     let mut iter = stream.clone().into_iter();
     let Some(TokenTree::Literal(literal)) = iter.next() else {
@@ -85,30 +50,39 @@ pub(crate) fn string_literal(stream: &TokenStream2) -> Result<Literal, String> {
     Ok(literal)
 }
 
+/// Returns the value of a string literal.
+pub(crate) fn string_value(stream: &TokenStream2) -> Result<String, String> {
+    let literal = string_literal(stream)?;
+    let text = literal.to_string();
+    Ok(text.trim_matches('"').to_owned())
+}
+
+/// Returns a boolean literal.
 pub(crate) fn bool_literal(stream: &TokenStream2) -> Result<bool, String> {
-    let text = stream.to_string();
-    match text.as_str() {
+    match stream.to_string().as_str() {
         "true" => Ok(true),
         "false" => Ok(false),
         _ => Err("expected boolean literal".into()),
     }
 }
 
+/// Returns the single group of the expected delimiter.
 pub(crate) fn single_group(
     stream: TokenStream2,
     delimiter: Delimiter,
-    name: &str,
+    what: &str,
 ) -> Result<Group, String> {
     let mut iter = stream.into_iter();
     let Some(TokenTree::Group(group)) = iter.next() else {
-        return Err(format!("expected `{name}` group"));
+        return Err(format!("expected `{what}` group"));
     };
     if group.delimiter() != delimiter || iter.next().is_some() {
-        return Err(format!("expected single `{name}` group"));
+        return Err(format!("expected single `{what}` group"));
     }
     Ok(group)
 }
 
+/// Splits a token stream at top-level separators.
 pub(crate) fn split_top_level(
     stream: TokenStream2,
     separator: &str,
@@ -150,12 +124,7 @@ pub(crate) fn split_top_level(
     Ok(parts)
 }
 
-#[derive(Debug)]
-pub(crate) struct Entry {
-    pub name: String,
-    pub value: TokenStream2,
-}
-
+/// Parses a declaration body into `name: value` entries.
 pub(crate) fn entries(group: Group) -> Result<Vec<Entry>, String> {
     let mut result = Vec::new();
     for part in split_top_level(group.stream(), ",")? {
@@ -181,12 +150,30 @@ pub(crate) fn entries(group: Group) -> Result<Vec<Entry>, String> {
     Ok(result)
 }
 
+/// Visibility of the generated module.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Visibility {
+    /// `pub(crate) mod`.
+    Public,
+    /// Private `mod`.
+    Private,
+}
+
+/// Module mode declaration.
+#[derive(Debug)]
+pub(crate) struct ModuleDecl {
+    pub(crate) vis: Visibility,
+    pub(crate) name: String,
+}
+
+/// Token cursor over the macro input.
 pub(crate) struct Cursor {
     tokens: Vec<TokenTree>,
     index: usize,
 }
 
 impl Cursor {
+    /// Creates a cursor.
     pub(crate) fn new(stream: TokenStream2) -> Self {
         Self {
             tokens: stream.into_iter().collect(),
@@ -194,19 +181,58 @@ impl Cursor {
         }
     }
 
+    /// Returns whether the input is exhausted.
     pub(crate) fn is_empty(&self) -> bool {
         self.index >= self.tokens.len()
     }
 
+    /// Consumes one token.
+    pub(crate) fn bump(&mut self) {
+        self.index = self.index.saturating_add(1);
+    }
+
+    /// Returns the identifier `offset` tokens ahead without consuming it.
+    fn ident_at(&self, offset: usize) -> Option<String> {
+        match self.tokens.get(self.index.saturating_add(offset)) {
+            Some(TokenTree::Ident(ident)) => Some(ident.to_string()),
+            _ => None,
+        }
+    }
+
+    /// Parses an optional `pub(crate) mod NAME;` or `mod NAME;` prefix.
+    pub(crate) fn module(&mut self) -> Option<ModuleDecl> {
+        let first = self.ident_at(0)?;
+        let (vis, keyword) = match first.as_str() {
+            "pub" => (Visibility::Public, 1),
+            "mod" => (Visibility::Private, 0),
+            _ => return None,
+        };
+        if self.ident_at(keyword).as_deref() != Some("mod") {
+            return None;
+        }
+        let name = self.ident_at(keyword.saturating_add(1))?;
+        let semicolon = self
+            .tokens
+            .get(self.index.saturating_add(keyword).saturating_add(2))?;
+        match semicolon {
+            TokenTree::Punct(punct) if punct.as_char() == ';' => {}
+            _ => return None,
+        }
+        self.index = self.index.saturating_add(keyword).saturating_add(3);
+        Some(ModuleDecl { vis, name })
+    }
+
+    /// Consumes an identifier.
     pub(crate) fn expect_ident(&mut self, what: &str) -> Result<String, String> {
         let Some(TokenTree::Ident(ident)) = self.tokens.get(self.index) else {
             return Err(format!("expected {what}"));
         };
         let name = ident.to_string();
-        self.index += 1;
+        self.bump();
         Ok(name)
     }
 
+    /// Consumes a braced group.
     pub(crate) fn expect_group(
         &mut self,
         delimiter: Delimiter,
@@ -219,7 +245,7 @@ impl Cursor {
             return Err(format!("expected {what}"));
         }
         let group = group.clone();
-        self.index += 1;
+        self.bump();
         Ok(group)
     }
 }

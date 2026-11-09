@@ -8,6 +8,7 @@
     reason = "explicit edit algebra and mapping branches"
 )]
 
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 
 use crate::error::EditError;
@@ -18,7 +19,9 @@ use crate::step::{Step, apply_step};
 use super::selection::Selection;
 
 /// Result of an undo or redo operation.
-type HistoryResult = Result<Option<(Doc, Selection, Vec<Step>)>, EditError>;
+///
+/// The moved group travels as an [`Arc`] so undo/redo never copies its steps.
+type HistoryResult = Result<Option<(Doc, Selection, Arc<Group>)>, EditError>;
 
 /// Origin of a transaction.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -60,6 +63,9 @@ pub struct HistoryInfo {
 }
 
 /// One undo group.
+///
+/// Groups are shared through [`Arc`]: cloning [`super::EditorState`] only bumps reference
+/// counts, and only group composition (merging consecutive host groups) pays a copy.
 #[derive(Clone, Debug)]
 pub(crate) struct Group {
     pub(crate) id: Option<GroupId>,
@@ -83,10 +89,13 @@ impl Group {
 }
 
 /// Bounded linear history.
+///
+/// Groups live behind [`Arc`] so [`Clone`] is O(groups) pointer increments instead of a deep
+/// copy of every step and inverse step.
 #[derive(Clone, Debug)]
 pub struct History {
-    done: Vec<Group>,
-    undone: Vec<Group>,
+    done: Vec<Arc<Group>>,
+    undone: Vec<Arc<Group>>,
     max_groups: usize,
     max_bytes: usize,
 }
@@ -157,11 +166,12 @@ impl History {
             && let Some(last) = self.done.last_mut()
             && last.id == Some(id)
         {
-            last.absorb(group);
+            // Composition is the only path that copies: the group is cloned on first write.
+            Arc::make_mut(last).absorb(group);
             self.trim();
             return;
         }
-        self.done.push(group);
+        self.done.push(Arc::new(group));
         self.trim();
     }
 
@@ -196,9 +206,9 @@ impl History {
         for step in group.inverse.iter().rev() {
             current = apply_step(&current, schema, step).map_err(EditError::Step)?;
         }
-        let changes = group.inverse.clone();
-        self.undone.push(group.clone());
-        Ok(Some((current, group.selection_before, changes)))
+        let selection = group.selection_before;
+        self.undone.push(Arc::clone(&group));
+        Ok(Some((current, selection, group)))
     }
 
     /// Redoes the latest undone group.
@@ -214,9 +224,9 @@ impl History {
         for step in &group.steps {
             current = apply_step(&current, schema, step).map_err(EditError::Step)?;
         }
-        let changes = group.steps.clone();
-        self.done.push(group.clone());
-        Ok(Some((current, group.selection_after, changes)))
+        let selection = group.selection_after;
+        self.done.push(Arc::clone(&group));
+        Ok(Some((current, selection, group)))
     }
 
     fn done_bytes(&self) -> usize {

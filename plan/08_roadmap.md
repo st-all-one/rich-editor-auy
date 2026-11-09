@@ -204,6 +204,11 @@ persiste.
 
 **Decisões:** D51, D52, D57–D58, D61–D62; D53/D54 entram em F1/F2; D56 em F5; F30–F32.
 
+**Estado (2026-11-09):** o adaptador DOM cobre seleção nativa ↔ posição canônica, intents de
+teclado/colagem/IME, live region educada e os modos `native`/`neutral`, com testes `jsdom` e
+`axe-core` (incluindo controle negativo). Colagem HTML/Markdown e o `Keymap` completo continuam em
+F5; ver [`../DIVERGENCES.md`](../DIVERGENCES.md).
+
 ### F4 — Performance e confiança (1 semana)
 
 **Objetivo:** provar os orçamentos e travar regressões.
@@ -229,6 +234,13 @@ persiste.
 - `make a11y` verde no corpus; nenhuma release sem `a11y_tree`/`validate_a11y`.
 
 **Decisões:** D06–D08 (chunking/binário); calibração.
+
+**Estado (2026-11-09):** entregáveis materializados. Os alvos de wire e a11y foram atingidos
+(`from_json` S2 12,8 ms, `validate_a11y` 2,34 ms); a inserção de 1 char ficou em 969 ns no S1,
+dentro do orçamento de alocação calibrado (15/10 alocações), mas acima do alvo de parede de 0,1 µs
+citado em `plan/05` — o gate real é `Ir` no `iai-callgrind` com `soft_limits` de 5%. O fuzz roda em
+`Schema::full` com quatro alvos (incluindo `round_trip`) e 60 s por alvo no CI; o PHP é executado
+via Docker (`make php`). As pendências restantes estão em [`../DIVERGENCES.md`](../DIVERGENCES.md).
 
 ### F5 — Interop, referências e SSR (pós-MVP, 2–3 semanas)
 

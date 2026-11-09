@@ -9,13 +9,16 @@ use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
+use crate::Limits;
 use crate::error::ParseError;
 use crate::model::{Attrs, Block, Doc, InlineAtom, InlineItem, Run, TextBlock};
 use crate::schema::Schema;
 
-use super::attrs::{DecodePath, decode_attrs, decode_marks};
+use super::attrs::{DecodePath, decode_attrs};
+use super::budget::{DecodeBudget, limit_error};
 use super::json::JsonValue;
 use super::json_parser::parse_json;
+use super::marks::decode_marks;
 use super::options::ParseOptions;
 
 /// Decodes a document node.
@@ -39,7 +42,7 @@ pub fn check_json(input: &str, options: &ParseOptions) -> Result<(), ParseError>
     parse_json(input, options.limits.max_depth).map(|_value| ())
 }
 
-fn path_string(path: &[u32]) -> Box<str> {
+pub(super) fn path_string(path: &[u32]) -> Box<str> {
     let mut out = String::new();
     for (index, component) in path.iter().enumerate() {
         if index > 0 {
@@ -66,6 +69,7 @@ pub(super) fn decode_doc(
         value.get("attrs"),
         &schema.doc().attrs,
         DecodePath::DocAttrs,
+        &options.limits,
     )?;
     let blocks = match value.get("content") {
         Some(content) => {
@@ -76,12 +80,7 @@ pub(super) fn decode_doc(
         }
         None => Vec::new(),
     };
-    let doc = Doc::new(attrs, blocks, &options.limits).map_err(|_error| ParseError {
-        code: Box::from("limit"),
-        offset: value.start(),
-        path: Box::from("doc"),
-    })?;
-    check_doc(doc, schema, 0)
+    check_doc(Doc::from_decoded(attrs, blocks), schema, 0)
 }
 
 /// Decodes a block sequence, using array indices as stable error paths.
@@ -90,11 +89,13 @@ pub(super) fn decode_blocks(
     schema: &Schema,
     options: &ParseOptions,
 ) -> Result<Vec<Arc<Block>>, ParseError> {
-    let mut blocks = Vec::new();
+    let mut blocks = Vec::with_capacity(values.len());
     let mut path = Vec::new();
+    let mut budget = DecodeBudget::default();
     for (index, child) in values.iter().enumerate() {
         path.push(u32::try_from(index).unwrap_or(u32::MAX));
-        let decoded = decode_block(child, schema, options, &mut path, 0)?;
+        let decoded = decode_block(child, schema, options, &mut path, 0, &mut budget)?;
+        budget.count_block(decoded.size().0, &options.limits, child.start(), &path)?;
         path.pop();
         blocks.push(Arc::new(decoded));
     }
@@ -114,13 +115,18 @@ pub(super) fn check_doc(doc: Doc, schema: &Schema, offset: u32) -> Result<Doc, P
     Ok(doc)
 }
 
-#[allow(clippy::too_many_lines, reason = "single-pass block decoder")]
+#[allow(
+    clippy::too_many_lines,
+    clippy::too_many_arguments,
+    reason = "single-pass block decoder threading decode state"
+)]
 fn decode_block(
     value: &JsonValue,
     schema: &Schema,
     options: &ParseOptions,
     path: &mut Vec<u32>,
     depth: u16,
+    budget: &mut DecodeBudget,
 ) -> Result<Block, ParseError> {
     if depth > options.limits.max_depth {
         return Err(ParseError {
@@ -129,6 +135,7 @@ fn decode_block(
             path: path_string(path),
         });
     }
+    budget.count_node(&options.limits, value.start(), path)?;
     let node_type = value
         .get("type")
         .and_then(JsonValue::as_str)
@@ -147,7 +154,12 @@ fn decode_block(
         offset: value.start(),
         path: path_string(path),
     })?;
-    let attrs = decode_attrs(value.get("attrs"), &spec.attrs, DecodePath::Node(path))?;
+    let attrs = decode_attrs(
+        value.get("attrs"),
+        &spec.attrs,
+        DecodePath::Node(path),
+        &options.limits,
+    )?;
     let children = value.get("content").and_then(JsonValue::as_array);
     if spec.atom {
         if children.is_some() {
@@ -168,10 +180,10 @@ fn decode_block(
     let Some(children) = children else {
         return Ok(Block::text(kind, attrs, TextBlock::empty()));
     };
-    let inline = if children.len() == 1 {
-        let Some(child) = children.first() else {
-            return Ok(Block::text(kind, attrs, TextBlock::empty()));
-        };
+    // The content model itself is checked by `Doc::validate` (I2); the decoder only needs to
+    // know whether the children are inline to pick the representation.
+    let mut inline = true;
+    for child in children {
         let child_kind = child
             .get("type")
             .and_then(JsonValue::as_str)
@@ -181,59 +193,66 @@ fn decode_block(
                 offset: child.start(),
                 path: path_string(path),
             })?;
-        schema
-            .node(child_kind)
-            .is_some_and(|child_spec| child_spec.inline)
-            && schema.content_allows(kind, &[child_kind])
-    } else {
-        let child_kinds = children
-            .iter()
-            .map(|child| {
-                child
-                    .get("type")
-                    .and_then(JsonValue::as_str)
-                    .and_then(|name| schema.node_kind(name))
-                    .ok_or_else(|| ParseError {
-                        code: Box::from("unknown_node"),
-                        offset: child.start(),
-                        path: path_string(path),
-                    })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        child_kinds.iter().all(|child| {
-            schema
-                .node(*child)
-                .is_some_and(|child_spec| child_spec.inline)
-        }) && schema.content_allows(kind, &child_kinds)
-    };
+        inline = inline
+            && schema
+                .node(child_kind)
+                .is_some_and(|child_spec| child_spec.inline);
+    }
     if inline {
-        let mut items = Vec::new();
+        let mut items = Vec::with_capacity(children.len());
+        let mut text_bytes = 0_u64;
         for child in children {
-            items.push(decode_inline(child, schema, path)?);
+            let item = decode_inline(child, schema, path, &options.limits)?;
+            match &item {
+                InlineItem::Atom(_) => {
+                    budget.count_node(&options.limits, child.start(), path)?;
+                }
+                InlineItem::Text(run) => {
+                    text_bytes = text_bytes
+                        .saturating_add(u64::try_from(run.text.len()).unwrap_or(u64::MAX));
+                }
+            }
+            items.push(item);
         }
+        if text_bytes > u64::from(options.limits.max_block_text_bytes) {
+            return Err(limit_error(value.start(), path));
+        }
+        if u32::try_from(items.len()).unwrap_or(u32::MAX) > options.limits.max_runs_per_block {
+            return Err(limit_error(value.start(), path));
+        }
+        let ceiling = u32::try_from(crate::model::MAX_RUN_BYTES)
+            .unwrap_or(4096)
+            .min(options.limits.max_block_text_bytes);
         let mut text = TextBlock::new(items);
-        text.normalize(options.limits.max_block_text_bytes)
-            .map_err(|_| ParseError {
-                code: Box::from("run_limit"),
-                offset: value.start(),
-                path: path_string(path),
-            })?;
+        text.normalize(ceiling).map_err(|_| ParseError {
+            code: Box::from("run_limit"),
+            offset: value.start(),
+            path: path_string(path),
+        })?;
         return Ok(Block::text(kind, attrs, text));
     }
-    let mut blocks = Vec::new();
+    let mut blocks = Vec::with_capacity(children.len());
     for (index, child) in children.iter().enumerate() {
         path.push(u32::try_from(index).unwrap_or(u32::MAX));
-        let decoded = decode_block(child, schema, options, path, depth.saturating_add(1))?;
+        let decoded = decode_block(
+            child,
+            schema,
+            options,
+            path,
+            depth.saturating_add(1),
+            budget,
+        )?;
         path.pop();
         blocks.push(Arc::new(decoded));
     }
     Ok(Block::container(kind, attrs, blocks))
 }
 
-fn decode_inline(
+pub(super) fn decode_inline(
     value: &JsonValue,
     schema: &Schema,
     path: &[u32],
+    limits: &Limits,
 ) -> Result<InlineItem, ParseError> {
     let node_type = value
         .get("type")
@@ -252,7 +271,10 @@ fn decode_inline(
                 offset: value.start(),
                 path: path_string(path),
             })?;
-        let marks = decode_marks(value.get("marks"), schema)?;
+        if u32::try_from(text.len()).unwrap_or(u32::MAX) > limits.max_block_text_bytes {
+            return Err(limit_error(value.start(), path));
+        }
+        let marks = decode_marks(value.get("marks"), schema, limits)?;
         return Ok(InlineItem::Text(Run::new(String::from(text), marks)));
     }
     let kind = schema.node_kind(node_type).ok_or_else(|| ParseError {
@@ -265,6 +287,11 @@ fn decode_inline(
         offset: value.start(),
         path: path_string(path),
     })?;
-    let attrs = decode_attrs(value.get("attrs"), &spec.attrs, DecodePath::Node(path))?;
+    let attrs = decode_attrs(
+        value.get("attrs"),
+        &spec.attrs,
+        DecodePath::Node(path),
+        limits,
+    )?;
     Ok(InlineItem::Atom(InlineAtom { kind, attrs }))
 }

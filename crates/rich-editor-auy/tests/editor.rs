@@ -2,10 +2,12 @@
 
 use std::sync::Arc;
 
-use rich_editor_auy::model::{Attrs, Block, Doc, Fragment, InlineItem, MarkSet, Run, TextBlock};
+use rich_editor_auy::model::{
+    Attrs, Block, Doc, Fragment, InlineItem, Mark, MarkId, MarkSet, Run, TextBlock,
+};
 use rich_editor_auy::pos::{Pos, Range};
 use rich_editor_auy::schema::Schema;
-use rich_editor_auy::state::{Editor, EditorOptions, Selection};
+use rich_editor_auy::state::{CompositionEvent, Editor, EditorOptions, Selection};
 
 fn paragraph(schema: &Schema, text: &str) -> Option<Arc<Block>> {
     let kind = schema.node_kind("paragraph")?;
@@ -200,4 +202,70 @@ fn from_json_uses_complete_schema() {
     assert_eq!(editor.doc().plain_text(), "hi");
     assert_eq!(editor.version(), 0);
     assert!(Editor::from_json("{}").is_err());
+}
+
+#[test]
+fn failed_transaction_leaves_document_selection_and_version_unchanged() {
+    let Some(mut editor) = fixture("abc") else {
+        return;
+    };
+    let Ok(schema) = Schema::full() else {
+        return;
+    };
+    assert!(editor.set_selection(Selection::caret(Pos(2))).is_ok());
+    let before = editor.doc().to_json_string(&schema);
+    let mut transaction = editor.transaction();
+    assert!(transaction.insert_text(Pos(1), "x").is_ok());
+    assert!(transaction.delete(Range::new(Pos(2), Pos(999))).is_ok());
+    assert!(
+        editor.apply(transaction).is_err(),
+        "the out-of-bounds delete must fail the transaction"
+    );
+    assert_eq!(editor.doc().to_json_string(&schema), before);
+    assert_eq!(editor.selection(), Selection::caret(Pos(2)));
+    assert_eq!(editor.version(), 0);
+    let info = editor.history_info();
+    assert_eq!(info.undo_depth, 0);
+    assert!(!info.can_undo);
+}
+
+#[test]
+fn composition_events_drive_one_history_group() {
+    let Some(mut editor) = fixture("hi") else {
+        return;
+    };
+    let Some(range) = editor.doc().block_range(0) else {
+        return;
+    };
+    let at = Pos(range.start.0.saturating_add(1));
+    let started = editor.apply_composition(CompositionEvent::Start {
+        at: Range::new(at, at),
+    });
+    assert!(started.is_ok(), "composition must start");
+    assert!(editor.is_composing());
+    assert!(editor.composition_id().is_some());
+    let updated = editor.apply_composition(CompositionEvent::Update {
+        text: Box::from("あ"),
+    });
+    assert!(updated.is_ok(), "composition must update");
+    let committed = editor.apply_composition(CompositionEvent::Commit);
+    assert!(committed.is_ok(), "composition must commit");
+    assert!(!editor.is_composing());
+    assert_eq!(editor.doc().plain_text(), "あhi");
+    assert!(editor.stored_marks().is_empty());
+    let undone = editor.undo();
+    assert!(undone.is_ok(), "composition is one history entry");
+    assert_eq!(editor.doc().plain_text(), "hi");
+}
+
+#[test]
+fn stored_marks_survive_a_transaction_without_marks() {
+    let Some(mut editor) = fixture("") else {
+        return;
+    };
+    let marks = editor.stored_marks().with_mark(Mark::new(MarkId(0)));
+    let mut transaction = editor.transaction();
+    transaction.set_stored_marks(marks.clone());
+    assert!(editor.apply(transaction).is_ok());
+    assert_eq!(*editor.stored_marks(), marks);
 }

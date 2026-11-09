@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
+[package.metadata]
+cargo-fuzz = true
+
 [workspace]
 
 [dependencies]
@@ -27,6 +30,20 @@ bench = false
 [[bin]]
 name = "apply_step"
 path = "fuzz_targets/apply_step.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "round_trip"
+path = "fuzz_targets/round_trip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fragment"
+path = "fuzz_targets/fragment.rs"
 test = false
 doc = false
 bench = false

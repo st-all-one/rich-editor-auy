@@ -14,16 +14,23 @@
 )]
 
 mod attr;
+mod batch;
 mod convert;
 mod dto;
 mod editor;
+mod ids;
 mod import;
+#[cfg(test)]
+mod import_tests;
+mod names;
 mod ops;
 mod problem;
 mod problem_map;
 mod stage;
 #[cfg(test)]
 mod tests;
+mod transaction;
+mod transaction_attrs;
 
 pub use editor::Editor;
 

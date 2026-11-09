@@ -1,10 +1,15 @@
 //! Canonical schema presets used by tests and examples.
 
+#[cfg(feature = "migration")]
 use crate::a11y::{A11yRole, A11ySpec, AltPolicy, NamePolicy};
+#[cfg(feature = "migration")]
 use crate::error::SchemaError;
+#[cfg(feature = "migration")]
 use crate::model::{AttrId, AttrValue};
 
-use super::{AttrSpec, AttrType, DocSpec, MarkSpec, NodeSpec, Schema};
+use super::Schema;
+#[cfg(feature = "migration")]
+use super::{AttrSpec, AttrType, DocSpec, MarkSpec, NodeSpec};
 
 impl Schema {
     /// Builds the basic document schema.
@@ -15,6 +20,7 @@ impl Schema {
     ///
     /// Returns a schema error if the preset itself is inconsistent.
     #[allow(clippy::too_many_lines, reason = "one readable canonical preset")]
+    #[cfg(feature = "migration")]
     pub fn basic() -> Result<Self, SchemaError> {
         let heading_level = AttrSpec::new("level", AttrType::Int { min: 1, max: 6 })
             .required()
