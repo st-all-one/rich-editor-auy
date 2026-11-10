@@ -1,5 +1,20 @@
+includes:
+    - vendor/phpstan/phpstan-strict-rules/rules.neon
+    - vendor/phpstan/phpstan-deprecation-rules/rules.neon
+    - vendor/phpstan/phpstan-phpunit/extension.neon
+    - vendor/phpstan/phpstan/conf/bleedingEdge.neon
+    - vendor/shipmonk/dead-code-detector/rules.neon
+
 parameters:
     level: max
+    phpVersion: 80200
     paths:
         - src
         - tests
+        - tools
+    reportUnmatchedIgnoredErrors: true
+    treatPhpDocTypesAsCertain: true
+    checkUninitializedProperties: true
+    checkBenevolentUnionTypes: true
+    checkExplicitMixed: true
+    checkImplicitMixed: true

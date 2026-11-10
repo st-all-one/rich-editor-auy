@@ -70,12 +70,16 @@ e o projeto usa Versionamento Semântico.
 - TS `Editor`: `selection()`, `block(index)`, `view(range)`, aliases `slice`/`insertSlice` e
   `apply(Transaction)`; `@rich-editor-auy/schema` exporta `SCHEMA_FINGERPRINT`, com teste contra o
   WASM para impedir drift.
-- PHP: `ValidationReport`/`ValidationIssue` com `ok()`, `exitCode`, `stdout`, `stderr` e issues
-  (`code`/`offset`/`path`); `Validator` usa arquivos temporários para evitar deadlock de pipe e
-  `run()` preserva o resultado bruto; `Envelope` aceita `doc_id` opcional e `Document` exige `doc`
-  objeto.
-- Gate do PHP em Docker (`packages/php/Dockerfile`, `make php`): `composer validate --strict`,
-  `audit`, PHPUnit e PHPStan level max verdes.
+- PHP 8.2+: `ProcessRunner` injetável (`Process\SystemProcessRunner` é a única implementação de
+  sistema) e `Validator` recebe o port; `ProcessResult` carrega `exitCode`/`stdout`/`stderr`, sem
+  arquivos temporários, shell ou `sys_get_temp_dir`.
+- PHP 8.2+: `ValidationReport` com `issues`, `diagnostics` (`error:`/`usage:`) e `unrecognized`
+  cru — nenhuma linha do CLI vira erro de validação inventado; construtor privado, parse único.
+- PHP 8.2+: exceções tipadas `InvalidDocument`, `IncompatibleEnvelope` e `TransportError`.
+- Gate do PHP em Docker (`make php` → `packages/php/Makefile`): imagens fixadas por digest, matriz
+  PHP 8.2/8.3/8.4/8.5 (glibc) + 8.2 (musl), `composer validate --strict`, Mago (lint + format),
+  PHPStan level max com strict/deprecation/PHPUnit/dead code, PHPUnit 11.5 estrito, cobertura de
+  statements 100% e smoke de consumidor.
 - `Schema::doc_filler` e `Slice::size` como API pública documentada.
 
 - Schema completo (`Schema::full`) com tabela, figura/`image_block`, `raw_code` textual, metadados,
@@ -130,6 +134,14 @@ e o projeto usa Versionamento Semântico.
   `trybuild` de erro de compilação; o subconjunto está documentado no README.
 - `make package-wasm` usa `--no-verify` (a crate depende de crates ainda não publicados) e continua
   fora de `make check`; o CI instala `binaryen` e `b3sum` e publica o digest do artefato.
+- PHP: `Envelope` tem construtor privado e `Envelope::fromArray` valida formato, versão, fingerprint
+  e `doc_id`; nenhum envelope inválido existe. `Document::fromBytes` rejeita topo lista, `doc`
+  ausente/vazio e propaga `IncompatibleEnvelope` antes de checar `doc`.
+- PHP: o pacote passa a exigir `php ^8.2` + `php-64bit` + `ext-json`, com `composer.lock`
+  versionado, `.editorconfig`/`.gitattributes`/`.dockerignore` e política de licença dual
+  (Apache-2.0 + MIT) dentro do pacote.
+- PHP: `Validator::run()` (execução bruta) saiu da API pública; a execução é do port `ProcessRunner`
+  e `Validator` expõe apenas `validate()`.
 
 ### Corrigido
 
@@ -140,6 +152,7 @@ e o projeto usa Versionamento Semântico.
 - Inversão de múltiplos steps, `StepMap` de split, preservação de marcas em `Slice::runs`, remoção
   de attrs por `Null`, validação estrutural no wire, allowlist de URLs no DOM e envelope no CLI/TS.
 - PHPStan level max: `Document`/`Envelope` declaram shapes de array e o decode rejeita listas.
+- PHP: `doc_id` com newline final deixou de ser aceito (`\A[\x21-\x7e]{1,128}\z` em vez de `$`).
 - `check_links.py` não trata o corpus local `ref/` (ignorado pelo git) como doc quebrada.
 
 ### Removido

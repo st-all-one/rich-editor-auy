@@ -1,8 +1,33 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<phpunit bootstrap="vendor/autoload.php" colors="true">
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache"
+         failOnWarning="true"
+         failOnDeprecation="true"
+         failOnNotice="true"
+         failOnRisky="true"
+         failOnEmptyTestSuite="true"
+         beStrictAboutTestsThatDoNotTestAnything="true"
+         requireCoverageMetadata="true"
+         executionOrder="default"
+         resolveDependencies="true">
     <testsuites>
-        <testsuite name="php">
+        <testsuite name="RichEditorAuy">
             <directory>tests</directory>
         </testsuite>
     </testsuites>
+    <source>
+        <include>
+            <directory>src</directory>
+        </include>
+    </source>
+    <php>
+        <ini name="error_reporting" value="-1"/>
+        <ini name="display_errors" value="1"/>
+        <ini name="zend.assertions" value="1"/>
+        <ini name="memory_limit" value="512M"/>
+        <env name="TZ" value="UTC"/>
+    </php>
 </phpunit>

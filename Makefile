@@ -46,7 +46,7 @@ check-ecosystem:
 	@if [ -f packages/ts/deno.json ]; then cd packages/ts && deno task check && deno task publish:dry; fi
 	@if [ -f packages/php/composer.json ]; then \
 		if command -v composer >/dev/null 2>&1; then \
-			cd packages/php && composer validate --strict && composer audit; \
+			cd packages/php && composer install --no-interaction --prefer-dist --no-progress && composer check && composer audit; \
 		elif command -v docker >/dev/null 2>&1; then \
 			$(MAKE) php; \
 		else \
@@ -70,8 +70,7 @@ fuzz:
 	@if [ -d fuzz ]; then cd fuzz && cargo +nightly fuzz run --fuzz-dir . json_parse -- -max_total_time=30 && cargo +nightly fuzz run --fuzz-dir . a11y_tree -- -max_total_time=30 && cargo +nightly fuzz run --fuzz-dir . apply_step -- -max_total_time=30 && cargo +nightly fuzz run --fuzz-dir . round_trip -- -max_total_time=30 && cargo +nightly fuzz run --fuzz-dir . fragment -- -max_total_time=30; fi
 
 php:
-	docker build -t rich-editor-auy-php packages/php
-	docker run --rm rich-editor-auy-php
+	$(MAKE) -C packages/php check-matrix
 
 bench:
 	cd bench && cargo bench --bench hot --bench wire

@@ -195,7 +195,7 @@ Onde mexer:
 ```sh
 make check                 # fmt --check + clippy -D warnings + test + doc
                            # + file-length + links + zero-style + a11y + package
-make check-ecosystem       # wasm + deno task check + composer validate/audit/test
+make check-ecosystem       # wasm + deno task check + composer check/audit
 cargo test --workspace --locked
 cargo test -p rich-editor-auy --locked a11y
 make a11y                  # gate dedicado; release sem ele é bloqueada
@@ -208,7 +208,7 @@ cargo +nightly miri test -p rich-editor-auy --test miri_smoke
 cargo +nightly fuzz run json_parse -- -max_total_time=30
 cargo +nightly fuzz run apply_step -- -max_total_time=30
 cd packages/ts && deno task check && deno task publish:dry
-cd packages/php && composer validate --strict && composer audit
+make php                   # validate + Mago + PHPStan + PHPUnit + cobertura + smoke
 ```
 
 Os alvos `deny`/`audit`/`machete`/`miri`/`fuzz` pulam com mensagem se a ferramenta não estiver
@@ -244,8 +244,8 @@ o teste não prova a MSRV.
 - **Referências**: `NodeId` sobrevive a split/join/undo; `refs` resolve, dangling e backlinks com
   corpus de dois documentos; nenhum teste depende de rede.
 - **Bindings**: PHP round-trip byte a byte; TS/WASM não reimplementa schema; CLI devolve `path`/
-  `offset`. `deno task check`/`deno publish --dry-run`, `composer validate/audit`, PHPUnit e
-  PHPStan são gates dos subprojetos oficiais.
+  `offset`. `deno task check`/`deno publish --dry-run` e `make php` (validate, Mago, PHPStan,
+  PHPUnit, cobertura de linhas 100% e smoke) são gates dos subprojetos oficiais.
 - **Bench** com `iai-callgrind` para regressão; `criterion` é informativo.
 - **Bug encontrado** ⇒ adicione o teste de regressão que o pega antes de fechar.
 
@@ -287,7 +287,7 @@ o teste não prova a MSRV.
 - [ ] Se dependência nova: justificativa + `cargo deny/machete`.
 - [ ] Se API pública: `cargo package`/`cargo publish --dry-run` verdes.
 - [ ] Se TS/WASM: `deno task check`/`deno publish --dry-run` verdes.
-- [ ] Se PHP: `composer validate --strict`, `composer audit`, PHPUnit e PHPStan verdes.
+- [ ] Se PHP: `make php` verde (validate, Mago, PHPStan, PHPUnit, cobertura 100%, smoke).
 - [ ] `plan/` e `AGENTS.md` atualizados se a fronteira mudou.
 
 ## 12. Referências

@@ -37,7 +37,7 @@ A consequência dura é:
 | **JSON canônico + envelope** | PHP, TS, Python, Go, servidor | armazena e transporta o documento; versão e fingerprint | não valida schema/steps; não renderiza |
 | **WASM/JSR** (`@rich-editor-auy/core`) | TS/JS no browser, Deno 2.0, edge, worker | executa o core; devolve change sets | não toca no DOM; não conhece CSS |
 | **Adaptador DOM** (`@rich-editor-auy/dom`) | TS/JS | input, IME, seleção, clipboard, mapeamento da `A11yTree`, render semântico | não define estilo, não vira UI kit, não inventa semântica |
-| **Composer PHP** (`rich-editor-auy/php`) | PHP 8.3+ | envelope, bytes preservados, validação via CLI | não reimplementa schema/steps; não abre rede |
+| **Composer PHP** (`rich-editor-auy/php`) | PHP 8.2+ | envelope, bytes preservados, validação via CLI | não reimplementa schema/steps; não abre rede |
 | **CLI** (`rich-editor-auy`) | PHP, CI, scripts | validar, formatar, comparar, renderizar com política | não é runtime de editor |
 | **`refs`** | servidor, TS, CLI | indexar documentos, resolver referências, backlinks, dangling | não armazena, não faz rede, não é CMS |
 
@@ -205,15 +205,17 @@ CLI. O pacote não tem dependência de runtime e não abre rede.
 
 ```text
 packages/php/
-  composer.json       # type library; php >=8.3; ext-json; sem require de runtime
+  composer.json       # type library; php >=8.2; ext-json; sem require de runtime
   src/                # PSR-4 RichEditorAuy\
   tests/              # PHPUnit
   phpstan.neon        # level max
   phpunit.xml
 ```
 
-- `composer validate --strict` e `composer audit` são gates; PHPUnit e PHPStan rodam em matriz
-  PHP 8.3/8.4/8.5.
+- `composer validate --strict` e `composer audit` são gates; Mago, PHPStan, PHPUnit, cobertura de
+  linhas 100% e smoke de consumidor rodam em matriz PHP 8.2/8.3/8.4/8.5 (glibc) e 8.2 (musl).
+- A execução do CLI é injetável via `ProcessRunner`; o pacote não usa shell, arquivos temporários
+  nem `sys_get_temp_dir`.
 - `Document::fromBytes()` preserva os bytes originais; `Envelope` valida `format`, `version`,
   `schema_fingerprint` de 64 hex (BLAKE3) e `doc_id` opcional; `Validator` chama o CLI e devolve
   `ValidationReport`; `Renderer` é opt-in e recebe `SanitizePolicy` explícita.
@@ -498,7 +500,7 @@ interfere" acabou.
 - `deno task check` e `deno publish --dry-run` verdes; pacote JSR sem `.css` e sem export de estilo.
 - `wasm32-unknown-unknown` compila com `--locked`; artefato WASM reprodutível e medido.
 - PHP: `fromBytes($bytes)->bytes() === $bytes` byte a byte; envelope incompatível falha tipado;
-  `composer validate --strict`, `composer audit`, PHPUnit e PHPStan verdes.
+  `composer validate --strict`, `composer audit`, Mago, PHPStan, PHPUnit e cobertura 100% verdes.
 - CLI valida um documento inválido com `path`/`offset`, sem panic.
 - IDs/`RefTarget` round-trip e `references()`/`anchors()` com corpus mínimo no testkit; o crate
   `refs` completo é F5.

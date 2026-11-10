@@ -93,16 +93,31 @@ jobs:
 
   php:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["8.2", "8.3", "8.4", "8.5"]
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: "8.3"
+          php-version: ${{ matrix.php }}
           tools: composer
-      - run: cd packages/php && composer install --no-interaction --prefer-dist
-      - run: cd packages/php && composer validate --strict && composer audit
-      - run: cd packages/php && vendor/bin/phpunit
-      - run: cd packages/php && vendor/bin/phpstan analyse
+          coverage: ${{ matrix.php == '8.2' && 'pcov' || 'none' }}
+      - run: cd packages/php && composer install --no-interaction --prefer-dist --no-progress
+      - run: cd packages/php && composer check
+      - if: matrix.php == '8.2'
+        run: cd packages/php && composer audit
+      - if: matrix.php == '8.2'
+        run: cd packages/php && composer coverage
+      - if: matrix.php == '8.2'
+        run: cd packages/php && composer smoke
+
+  php-alpine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make -C packages/php check-alpine
 
   bench:
     runs-on: ubuntu-latest

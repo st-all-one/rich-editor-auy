@@ -4,73 +4,48 @@ declare(strict_types=1);
 
 namespace RichEditorAuy;
 
+use RichEditorAuy\Exception\TransportError;
+use RichEditorAuy\Process\ProcessRunner;
+use RichEditorAuy\Process\SystemProcessRunner;
+
+/**
+ * Validates canonical bytes with the `rich-editor-auy` CLI.
+ *
+ * The binary is always injected; the runner defaults to the system
+ * implementation but can be replaced by any {@see ProcessRunner}.
+ */
 final class Validator
 {
-    public function __construct(private readonly string $binary)
+    private readonly string $binary;
+
+    private readonly ProcessRunner $runner;
+
+    /**
+     * @throws \InvalidArgumentException when the binary path is empty or holds a NUL byte
+     */
+    public function __construct(string $binary, ?ProcessRunner $runner = null)
     {
+        if ($binary === '') {
+            throw new \InvalidArgumentException('validator binary must not be empty');
+        }
+
+        if (str_contains($binary, "\0")) {
+            throw new \InvalidArgumentException('validator binary must not contain NUL bytes');
+        }
+
+        $this->binary = $binary;
+        $this->runner = $runner ?? new SystemProcessRunner();
     }
 
     /**
-     * Runs the CLI and returns its structured report.
+     * Runs `validate` with the given bytes on stdin and parses the report.
+     *
+     * @throws TransportError when the process cannot be executed or read
      */
     public function validate(string $bytes): ValidationReport
     {
-        $result = $this->run($bytes);
+        $result = $this->runner->run([$this->binary, 'validate'], $bytes);
 
-        return ValidationReport::fromProcess($result['exit'], $result['stdout'], $result['stderr']);
-    }
-
-    /**
-     * Runs the CLI and returns the raw process result.
-     *
-     * @return array{exit:int,stdout:string,stderr:string}
-     */
-    public function run(string $bytes): array
-    {
-        $stdoutPath = tempnam(sys_get_temp_dir(), 'auy-out-');
-        $stderrPath = tempnam(sys_get_temp_dir(), 'auy-err-');
-        if ($stdoutPath === false || $stderrPath === false) {
-            throw new \RuntimeException('could not create validator temporary files');
-        }
-
-        try {
-            $process = proc_open(
-                [$this->binary, 'validate'],
-                [
-                    0 => ['pipe', 'r'],
-                    1 => ['file', $stdoutPath, 'w'],
-                    2 => ['file', $stderrPath, 'w'],
-                ],
-                $pipes,
-            );
-            if (!is_resource($process)) {
-                throw new \RuntimeException('could not start validator');
-            }
-
-            $offset = 0;
-            $length = strlen($bytes);
-            while ($offset < $length) {
-                $written = fwrite($pipes[0], substr($bytes, $offset));
-                if ($written === false || $written === 0) {
-                    fclose($pipes[0]);
-                    proc_close($process);
-                    throw new \RuntimeException('could not write validator input');
-                }
-                $offset += $written;
-            }
-            fclose($pipes[0]);
-
-            $exit = proc_close($process);
-            $stdout = file_get_contents($stdoutPath);
-            $stderr = file_get_contents($stderrPath);
-            if ($stdout === false || $stderr === false) {
-                throw new \RuntimeException('could not read validator output');
-            }
-
-            return ['exit' => $exit, 'stdout' => $stdout, 'stderr' => $stderr];
-        } finally {
-            @unlink($stdoutPath);
-            @unlink($stderrPath);
-        }
+        return ValidationReport::fromProcess($result->exitCode, $result->stdout, $result->stderr);
     }
 }

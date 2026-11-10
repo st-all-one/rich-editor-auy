@@ -4,58 +4,79 @@ declare(strict_types=1);
 
 namespace RichEditorAuy;
 
+use RichEditorAuy\Exception\IncompatibleEnvelope;
+use RichEditorAuy\Exception\InvalidDocument;
+
+/**
+ * Canonical document bytes plus their validated envelope.
+ *
+ * The package never rewrites the document: {@see Document::bytes()} returns
+ * exactly the string that was parsed. {@see Document::json()} exists for
+ * inspection only and must not be re-serialized for storage.
+ */
 final class Document
 {
     /**
-     * @param array<string, mixed> $json Decoded envelope object.
+     * @param array<array-key, mixed> $json
      */
     private function __construct(
         private readonly string $bytes,
         private readonly array $json,
         private readonly Envelope $envelope,
-    ) {
-    }
+    ) {}
 
+    /**
+     * Parses and validates the bytes of a canonical envelope.
+     *
+     * Associative decoding cannot distinguish `{}` from `[]`; both are rejected
+     * where an object is required.
+     *
+     * @throws InvalidDocument when the bytes are not a JSON object with a non-empty doc
+     * @throws IncompatibleEnvelope when the envelope metadata is not readable
+     */
     public static function fromBytes(string $bytes): self
     {
-        $decoded = json_decode($bytes, true, 512, JSON_THROW_ON_ERROR);
+        try {
+            $decoded = json_decode($bytes, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $exception) {
+            throw new InvalidDocument('document must be valid JSON: ' . $exception->getMessage(), 0, $exception);
+        }
+
         if (!is_array($decoded) || array_is_list($decoded)) {
-            throw new \InvalidArgumentException('document must be a JSON object');
+            throw new InvalidDocument('document must be a JSON object');
         }
-        /** @var array<string, mixed> $json */
-        $json = $decoded;
-        $doc = $json['doc'] ?? null;
-        if (!is_array($doc) || array_is_list($doc)) {
-            throw new \InvalidArgumentException('envelope must contain a doc object');
+
+        $envelope = Envelope::fromArray($decoded);
+
+        $doc = $decoded['doc'] ?? null;
+        if (!is_array($doc) || $doc === [] || array_is_list($doc)) {
+            throw new InvalidDocument('envelope must contain a non-empty doc object');
         }
-        $docId = $json['doc_id'] ?? null;
-        if ($docId !== null && !is_string($docId)) {
-            throw new \InvalidArgumentException('doc_id must be a string');
-        }
-        $envelope = new Envelope(
-            is_string($json['format'] ?? null) ? $json['format'] : '',
-            is_int($json['version'] ?? null) ? $json['version'] : 0,
-            is_string($json['schema_fingerprint'] ?? null) ? $json['schema_fingerprint'] : '',
-            $doc,
-            $docId,
-        );
-        $envelope->validate();
-        return new self($bytes, $json, $envelope);
+
+        return new self($bytes, $decoded, $envelope);
     }
 
+    /**
+     * Returns the parsed bytes unchanged, including whitespace and escapes.
+     */
     public function bytes(): string
     {
         return $this->bytes;
     }
 
     /**
-     * @return array<string, mixed> Decoded envelope object.
+     * Returns the decoded envelope for inspection only.
+     *
+     * @return array<array-key, mixed>
      */
     public function json(): array
     {
         return $this->json;
     }
 
+    /**
+     * Returns the validated envelope metadata.
+     */
     public function envelope(): Envelope
     {
         return $this->envelope;

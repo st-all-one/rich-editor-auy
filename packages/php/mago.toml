@@ -1,0 +1,27 @@
+version = "1.59.0"
+php-version = "8.2"
+
+[source]
+paths = ["src", "tests", "tools"]
+includes = []
+excludes = ["build", "vendor", ".phpunit.cache"]
+
+[formatter]
+print-width = 120
+end-of-line = "lf"
+single-quote = true
+trailing-comma = true
+use-tabs = false
+
+[linter]
+integrations = ["phpunit"]
+
+[linter.rules.literal-named-argument]
+# Byte-level calls (fwrite targets, str_repeat counts, str_replace ordering) read
+# better positionally; naming every builtin literal argument adds noise, not clarity.
+enabled = false
+
+[linter.rules.assertion-style]
+# PHPUnit's expectException()/expectExceptionMessage() are instance-only, so `$this`
+# keeps a single style across an entire test.
+style = "$this"
