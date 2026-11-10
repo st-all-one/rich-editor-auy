@@ -14,6 +14,7 @@ final class Envelope
         public readonly int $version,
         public readonly string $schemaFingerprint,
         public readonly array $doc,
+        public readonly ?string $docId = null,
     ) {
     }
 
@@ -24,6 +25,9 @@ final class Envelope
         }
         if (!preg_match('/^[0-9a-f]{64}$/', $this->schemaFingerprint)) {
             throw new \InvalidArgumentException('schema_fingerprint must be 64 lowercase hex characters');
+        }
+        if ($this->docId !== null && preg_match('/^[\x21-\x7e]{1,128}$/', $this->docId) !== 1) {
+            throw new \InvalidArgumentException('doc_id must be 1-128 graphic ASCII characters');
         }
     }
 

@@ -65,12 +65,13 @@ usar o CLI. Mutar JSON canônico em PHP é o caminho para bytes não canônicos 
 | Pacote | Conteúdo | DOM? | CSS? |
 |---|---|---|---|
 | `@rich-editor-auy/core` | WASM do core: `Schema`, `Doc`, `EditorState`, `Transaction`, `ChangeSet` | não | não |
-| `@rich-editor-auy/schema` | presets (`basic`, `document`) e builder que **emite** schema canônico | não | não |
+| `@rich-editor-auy/schema` | `fullSchema`, nomes de nós/marcas e o fingerprint do schema completo; não há preset básico/customizado | não | não |
 | `@rich-editor-auy/dom` | adaptador: `mount`/`bind`, input, IME, seleção, clipboard, mapeamento de `A11yTree` | sim, só no host | **nenhum** |
 | `@rich-editor-auy/react` etc. | wrappers finos, comunidade/opcional | sim | nenhum |
 
-O `core` é a autoridade. O builder de schema em TS é um **serializador**, não um validador: se o
-schema for inválido, o WASM devolve `SchemaError` no `init`/`fromJSON`; não há duas regras.
+O `core` é a autoridade. O pacote `schema` descreve o vocabulário público, mas não valida nem
+reimplementa o schema: o WASM é quem constrói `Schema::full()` e devolve `SchemaError` no
+`init`/`fromJSON`; não há duas regras.
 
 `crates/rich-editor-auy-wasm` é um crate separado, pode usar `std` e o glue do `wasm-bindgen`; ele
 não é o core publicado. O core continua `no_std + alloc` e `forbid(unsafe_code)`; nenhuma linha
@@ -79,16 +80,15 @@ publicada usa `unsafe`.
 ### 3.2 Caminho de 10 linhas
 
 ```ts
-import { init, EditorState } from "@rich-editor-auy/core";
+import { Editor, init } from "@rich-editor-auy/core";
 import { mount } from "@rich-editor-auy/dom";
-import { basicSchema } from "@rich-editor-auy/schema";
 
 await init();
-const schema = basicSchema();
-const state = EditorState.fromEnvelope(schema, savedBytes);
-const editor = mount(document.querySelector("#editor")!, {
-  state,
-  onChange: (change) => save(change.toJSON()),
+const editorState = Editor.fromEnvelope(savedBytes);
+const view = mount(document.querySelector("#editor")!, {
+  state: editorState,
+  editor: editorState,
+  onInput: (_event, current) => save(current.doc().toJSON()),
 });
 // nenhum import de CSS; #editor é o host e continua sendo seu.
 ```
@@ -158,7 +158,8 @@ packages/ts/
 ```
 
 - `@rich-editor-auy/core` não importa DOM; `@rich-editor-auy/dom` é browser-only;
-  `@rich-editor-auy/schema` é um serializador de presets, não um validador.
+  `@rich-editor-auy/schema` descreve o vocabulário público (`fullSchema`), não um validador nem um
+  segundo schema.
 - `init()` é idempotente e o loader usa `fetch(new URL("./wasm/…wasm", import.meta.url))`, o que
   funciona em Deno 2.0 e no browser sem `node_modules`.
 - `deno task check` e `deno publish --dry-run` são gates; a publicação real só ocorre em tag com
@@ -178,15 +179,20 @@ $doc = Document::fromBytes($request->json);       // preserva os bytes
 $doc->envelope()->requireCompatible($schemaFingerprint);
 
 $report = (new Validator('/usr/local/bin/rich-editor-auy'))
-    ->withSchema($schemaPath)
     ->validate($doc->bytes());                    // opcional, em CI ou em request sensível
+
+if (!$report->ok()) {
+    foreach ($report->issues as $issue) {
+        error_log("{$issue->code} at {$issue->offset} ({$issue->path})");
+    }
+}
 ```
 
 | API | Garante | Não garante |
 |---|---|---|
 | `Document::fromBytes` | JSON bem formado, envelope reconhecido, bytes preservados | schema, normalização, steps |
 | `envelope()` | `format`, `version`, `schema_fingerprint` | compatibilidade semântica do schema |
-| `Validator` | relatório do CLI (violações, offsets) | execução do editor |
+| `Validator` | `ValidationReport` com `ok()`, `exitCode`, `stdout`, `stderr` e `issues` (`code`/`offset`/`path`) | execução do editor |
 | `Renderer` (opcional) | HTML com política explícita de sanitização | fidelidade visual ou CSS |
 
 `Document::json()` existe para inspeção; **não** use para resserializar e gravar. Se o consumidor
@@ -208,9 +214,11 @@ packages/php/
 
 - `composer validate --strict` e `composer audit` são gates; PHPUnit e PHPStan rodam em matriz
   PHP 8.3/8.4/8.5.
-- `Document::fromBytes()` preserva os bytes originais; `Envelope` valida `format`, `version` e
-  `schema_fingerprint` de 64 hex (BLAKE3); `Validator` chama o CLI e devolve o relatório; `Renderer`
-  é opt-in e recebe `SanitizePolicy` explícita.
+- `Document::fromBytes()` preserva os bytes originais; `Envelope` valida `format`, `version`,
+  `schema_fingerprint` de 64 hex (BLAKE3) e `doc_id` opcional; `Validator` chama o CLI e devolve
+  `ValidationReport`; `Renderer` é opt-in e recebe `SanitizePolicy` explícita.
+- Não existe `Validator::withSchema`: o CLI constrói `Schema::full()`, e schema customizado não é
+  API pública (plan/11).
 - O pacote não reimplementa schema, `Step`, `Mapping` ou normalização e não depende de extensão
   além de `ext-json`.
 - Publicação é por tag: Composer/Packagist consome o repositório; não há passo de build PHP no

@@ -84,6 +84,7 @@ wasm:
 
 examples:
 	deno check examples/ts/main.ts
+	deno check --config packages/ts/deno.json examples/demo/main.ts
 	deno run --allow-read examples/ts/main.ts
 
 clean:

@@ -54,6 +54,9 @@ Deno.test("stateful editor applies atomic batches", async () => {
   deepStrictEqual(view.blocks[0]?.text, "XOlá");
   deepStrictEqual(view.blocks[0]?.runs?.[0]?.text, "XOlá");
   deepStrictEqual(view.blocks[0]?.range[0], 0);
+  deepStrictEqual(editor.block(0)?.kind, "paragraph");
+  deepStrictEqual(editor.block(99), null);
+  deepStrictEqual(editor.view({ from: 0, to: 1 }).blocks.length, 1);
 });
 
 Deno.test("applied results omit the document and report blocks", async () => {
@@ -81,6 +84,8 @@ Deno.test("selection commands and position conversion round-trip", async () => {
   const applied = editor.insertText("!");
   deepStrictEqual("doc" in applied, false);
   deepStrictEqual(editor.doc().plainText(), "Olá!");
+  deepStrictEqual(editor.selection().type, "caret");
+  deepStrictEqual(editor.block(0)?.index, 0);
   deepStrictEqual(editor.posToUtf16(3), 2);
   deepStrictEqual(editor.utf16ToPos(0, 2), 3);
   deepStrictEqual(editor.snapToScalar(3), 3);
@@ -100,7 +105,7 @@ Deno.test("transactions compose, consume once, and reject stale bases", async ()
   const editor = Editor.fromJSON(PARAGRAPH);
   const transaction = editor.transaction();
   transaction.insertText(1, "A").insertText(2, "B");
-  const applied = editor.applyTransaction(transaction);
+  const applied = editor.apply(transaction);
   deepStrictEqual("doc" in applied, false);
   deepStrictEqual(transaction.consumed(), true);
   deepStrictEqual(editor.doc().plainText(), "ABOlá");
@@ -323,9 +328,9 @@ Deno.test("clipboard copy and paste round-trip through the slice wire", async ()
   const editor = Editor.fromJSON(
     '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"abcd"}]}]}',
   );
-  const slice = editor.copyRange(2, 4);
+  const slice = editor.slice(2, 4);
   deepStrictEqual(slice.text, "bc");
-  const pasted = editor.pasteSlice(1, slice);
+  const pasted = editor.insertSlice(1, slice);
   deepStrictEqual(pasted.changes?.selection, true);
   deepStrictEqual(editor.doc().plainText(), "bcabcd");
   const cut = editor.cutRange(1, 3);

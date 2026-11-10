@@ -177,10 +177,7 @@ fn validate_node(
             }
         }
         A11yRole::Table => {
-            let has_header = node
-                .children
-                .iter()
-                .any(|child| matches!(child.role, A11yRole::TableCell { header: true }));
+            let has_header = has_header_descendant(node);
             if !has_header && node.caption.is_none() {
                 push(
                     warnings,
@@ -207,6 +204,13 @@ fn validate_node(
     for child in &node.children {
         validate_node(child, &child.path, ids, heading, errors, warnings);
     }
+}
+
+/// Returns whether a table subtree contains a header cell.
+fn has_header_descendant(node: &A11yNode) -> bool {
+    node.children.iter().any(|child| {
+        matches!(child.role, A11yRole::TableCell { header: true }) || has_header_descendant(child)
+    })
 }
 
 #[allow(clippy::too_many_arguments, reason = "diagnostic constructor")]

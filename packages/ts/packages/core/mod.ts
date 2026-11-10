@@ -445,7 +445,7 @@ export interface StateProvider extends A11yTreeProvider {
  * edits the rendered tree itself. `Editor` satisfies this interface.
  */
 export interface EditorLike extends StateProvider {
-  apply(payload: BatchPayload | string): AppliedJSON;
+  apply(payload: BatchPayload | Transaction | string): AppliedJSON;
   pasteSlice(at: number, slice: SliceJSON | string): AppliedJSON;
   replaceSlice(
     from: number,
@@ -810,8 +810,11 @@ export class Editor implements StateProvider {
     );
   }
 
-  /** Applies an atomic operation batch. */
-  apply(payload: BatchPayload | string): AppliedJSON {
+  /** Applies an atomic operation batch or a composed transaction. */
+  apply(payload: BatchPayload | Transaction | string): AppliedJSON {
+    if (payload instanceof Transaction) {
+      return this.applyTransaction(payload);
+    }
     return JSON.parse(
       guarded(() => this.#inner.apply(payloadText(payload))),
     ) as AppliedJSON;
@@ -853,9 +856,26 @@ export class Editor implements StateProvider {
     return JSON.parse(this.#inner.stateJSON()) as EditorStateJSON;
   }
 
+  /** Returns the current selection as wire data. */
+  selection(): SelectionJSON {
+    return this.toJSON().selection;
+  }
+
   /** Returns the render projection with names, ranges, runs, atoms and children. */
-  view(): DocView {
-    return JSON.parse(this.#inner.viewJSON()) as DocView;
+  view(range?: RangeJSON): DocView {
+    const projection = JSON.parse(this.#inner.viewJSON()) as DocView;
+    if (range === undefined) return projection;
+    return {
+      ...projection,
+      blocks: projection.blocks.filter((block) =>
+        block.range[1] >= range.from && block.range[0] <= range.to
+      ),
+    };
+  }
+
+  /** Returns one top-level render block, or `null` when the index is out of range. */
+  block(index: number): BlockView | null {
+    return this.view().blocks[index] ?? null;
   }
 
   version(): number {
@@ -914,12 +934,22 @@ export class Editor implements StateProvider {
     ) as SliceJSON;
   }
 
+  /** Plan-compatible alias for {@link copyRange}. */
+  slice(from: number, to: number): SliceJSON {
+    return this.copyRange(from, to);
+  }
+
   /** Inserts a slice, replacing the range when one is given. */
   pasteSlice(at: number, slice: SliceJSON | string): AppliedJSON {
     const payload = typeof slice === "string" ? slice : JSON.stringify(slice);
     return JSON.parse(
       guarded(() => this.#inner.pasteSlice(at, payload)),
     ) as AppliedJSON;
+  }
+
+  /** Plan-compatible alias for {@link pasteSlice} with paste origin. */
+  insertSlice(at: number, slice: SliceJSON | string): AppliedJSON {
+    return this.pasteSlice(at, slice);
   }
 
   /** Replaces a range with a slice. */

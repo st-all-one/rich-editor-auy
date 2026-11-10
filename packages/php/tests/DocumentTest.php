@@ -37,6 +37,28 @@ final class DocumentTest extends TestCase
         self::assertSame($bytes, $document->bytes());
     }
 
+    public function testRejectsDocList(): void
+    {
+        $bytes = '{"format":"rich-editor-auy","version":2,"schema_fingerprint":"' . str_repeat('a', 64) . '","doc":[]}';
+        $this->expectException(\InvalidArgumentException::class);
+        Document::fromBytes($bytes);
+    }
+
+    public function testPreservesDocId(): void
+    {
+        $bytes = '{"format":"rich-editor-auy","version":2,"schema_fingerprint":"' . str_repeat('a', 64) . '","doc_id":"post-1","doc":{"type":"doc","content":[]}}';
+        $document = Document::fromBytes($bytes);
+        self::assertSame('post-1', $document->envelope()->docId);
+        self::assertSame($bytes, $document->bytes());
+    }
+
+    public function testRejectsInvalidDocId(): void
+    {
+        $bytes = '{"format":"rich-editor-auy","version":2,"schema_fingerprint":"' . str_repeat('a', 64) . '","doc_id":"bad id","doc":{"type":"doc","content":[]}}';
+        $this->expectException(\InvalidArgumentException::class);
+        Document::fromBytes($bytes);
+    }
+
     public function testRejectsFingerprintMismatch(): void
     {
         $envelope = new \RichEditorAuy\Envelope(

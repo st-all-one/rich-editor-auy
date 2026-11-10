@@ -142,3 +142,30 @@ fn table_cells_accept_block_content() {
     );
     assert_eq!(cell.name.as_deref(), Some("Value"));
 }
+
+#[test]
+fn table_with_header_is_not_reported_as_headerless() {
+    let Some(schema) = full() else {
+        return;
+    };
+    let input = r#"{"type":"doc","content":[{"type":"table","content":[
+        {"type":"table_caption","content":[{"type":"text","text":"T"}]},
+        {"type":"table_row","content":[
+            {"type":"table_header","attrs":{"scope":"col"},"content":[{"type":"paragraph","content":[{"type":"text","text":"H"}]}]},
+            {"type":"table_cell","content":[{"type":"paragraph","content":[{"type":"text","text":"V"}]}]}
+        ]}
+    ]}]}"#;
+    let parsed = from_json(input, &schema, &ParseOptions::default());
+    assert!(parsed.is_ok(), "table must parse: {parsed:?}");
+    let Ok(doc) = parsed else {
+        return;
+    };
+    let report = doc.validate_a11y(&schema);
+    assert!(
+        report
+            .warnings
+            .iter()
+            .all(|issue| issue.code.as_str() != "A006"),
+        "table with header must not emit A006: {report:?}"
+    );
+}

@@ -1,0 +1,188 @@
+{
+  "type": "doc",
+  "attrs": {
+    "lang": "pt-BR",
+    "dir": "ltr",
+    "title": "rich-editor-auy — demonstração ao vivo",
+    "description": "Documento canônico com blocos, marcas, mídia, tabela, raw_code, a11y e histórico.",
+    "authors": ["Ana", "Bruno"],
+    "tags": ["demo", "live", "a11y"],
+    "metadata": { "build": "demo", "locale": "pt-BR" }
+  },
+  "content": [
+    {
+      "type": "heading",
+      "attrs": { "level": 1, "align": "center" },
+      "content": [
+        { "type": "text", "text": "rich-editor-auy" }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "content": [
+        { "type": "text", "text": "Editor canônico com " },
+        { "type": "text", "text": "negrito", "marks": [{ "type": "strong" }] },
+        { "type": "text", "text": ", " },
+        { "type": "text", "text": "itálico", "marks": [{ "type": "em" }] },
+        { "type": "text", "text": ", " },
+        { "type": "text", "text": "sublinhado", "marks": [{ "type": "underline" }] },
+        { "type": "text", "text": ", " },
+        { "type": "text", "text": "riscado", "marks": [{ "type": "strike" }] },
+        { "type": "text", "text": ", " },
+        { "type": "text", "text": "código", "marks": [{ "type": "code" }] },
+        { "type": "text", "text": ", " },
+        { "type": "text", "text": "destaque", "marks": [{ "type": "highlight" }] },
+        { "type": "text", "text": ", " },
+        { "type": "text", "text": "x²", "marks": [{ "type": "sup" }] },
+        { "type": "text", "text": " e " },
+        { "type": "text", "text": "H₂O", "marks": [{ "type": "sub" }] },
+        { "type": "text", "text": "." }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "content": [
+        { "type": "text", "text": "Links: " },
+        {
+          "type": "text",
+          "text": "site oficial",
+          "marks": [{ "type": "link", "href": "https://example.com", "title": "Exemplo", "target": "_blank" }]
+        },
+        { "type": "text", "text": " e referência para " },
+        {
+          "type": "text",
+          "text": "outro documento",
+          "marks": [{ "type": "ref", "target": { "doc": "demo-target", "node": "intro" } }]
+        },
+        { "type": "text", "text": "." }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "content": [
+        { "type": "text", "text": "Quebra de linha:" },
+        { "type": "hard_break" },
+        { "type": "text", "text": "segunda linha com imagem inline " },
+        {
+          "type": "image",
+          "attrs": {
+            "src": "/assets/demo.svg",
+            "alt": "Selo AUY",
+            "title": "Selo AUY",
+            "width": 48,
+            "height": 48,
+            "intrinsic_width": 64,
+            "intrinsic_height": 64,
+            "loading": "lazy",
+            "decoding": "async"
+          }
+        },
+        { "type": "text", "text": " e mídia: " },
+        {
+          "type": "video",
+          "attrs": {
+            "src": "/assets/demo.mp4",
+            "alt": "Vídeo de exemplo",
+            "controls": true,
+            "mime": "video/mp4",
+            "size_bytes": 57919,
+            "width": 320,
+            "height": 180,
+            "intrinsic_width": 320,
+            "intrinsic_height": 180
+          }
+        },
+        { "type": "text", "text": " " },
+        {
+          "type": "audio",
+          "attrs": {
+            "src": "/assets/demo.wav",
+            "alt": "Áudio de exemplo",
+            "controls": true,
+            "mime": "audio/wav",
+            "size_bytes": 88278,
+            "width": 320,
+            "height": 80
+          }
+        },
+        { "type": "text", "text": " " },
+        {
+          "type": "attachment",
+          "attrs": {
+            "src": "/assets/demo.svg",
+            "alt": "Baixar exemplo",
+            "filename": "demo.svg",
+            "mime": "image/svg+xml",
+            "size_bytes": 1024
+          }
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "attrs": { "level": 2 },
+      "content": [{ "type": "text", "text": "Listas" }]
+    },
+    {
+      "type": "bullet_list",
+      "attrs": { "tight": true },
+      "content": [
+        { "type": "list_item", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Item com strong", "marks": [{ "type": "strong" }] }] }] },
+        { "type": "list_item", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Item com link", "marks": [{ "type": "link", "href": "https://example.com" }] }] }] }
+      ]
+    },
+    {
+      "type": "ordered_list",
+      "attrs": { "start": 3, "reversed": true, "tight": true, "type": "a" },
+      "content": [
+        { "type": "list_item", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Terceiro" }] }] },
+        { "type": "list_item", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Quarto" }] }] }
+      ]
+    },
+    {
+      "type": "blockquote",
+      "content": [
+        { "type": "paragraph", "content": [{ "type": "text", "text": "Citação com " }, { "type": "text", "text": "ênfase", "marks": [{ "type": "em" }] }, { "type": "text", "text": "." }] }
+      ]
+    },
+    {
+      "type": "code_block",
+      "attrs": { "language": "ts", "meta": "demo", "line_numbers": true },
+      "content": [{ "type": "text", "text": "const editor = Editor.fromJSON(json);\neditor.apply({ ops: [{ op: \"insert_text\", at: 0, text: \"Olá\" }] });" }]
+    },
+    {
+      "type": "raw_code",
+      "attrs": { "language": "html", "format": "html", "filename": "demo.html", "meta": "text/html", "line_numbers": true },
+      "content": [{ "type": "text", "text": "<section>\n  <h1>HTML cru como texto seguro</h1>\n</section>" }]
+    },
+    {
+      "type": "table",
+      "attrs": { "summary": "Tabela de demonstração", "col_widths": [40, 60] },
+      "content": [
+        { "type": "table_caption", "content": [{ "type": "text", "text": "Tabela com cabeçalho, spans e alinhamento" }] },
+        {
+          "type": "table_row",
+          "content": [
+            { "type": "table_header", "attrs": { "scope": "col" }, "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Feature" }] }] },
+            { "type": "table_header", "attrs": { "scope": "col" }, "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Estado" }] }] }
+          ]
+        },
+        {
+          "type": "table_row",
+          "content": [
+            { "type": "table_cell", "attrs": { "align": "start" }, "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Schema completo" }] }] },
+            { "type": "table_cell", "attrs": { "align": "end" }, "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "23 nós / 10 marks" }] }] }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "figure",
+      "content": [
+        { "type": "image_block", "attrs": { "src": "/assets/demo.svg", "alt": "Diagrama AUY", "width": 240, "height": 120, "caption": "Fluxo AUY", "credit": "rich-editor-auy" } },
+        { "type": "caption", "content": [{ "type": "text", "text": "Figura: árvore semântica e render separados" }] }
+      ]
+    },
+    { "type": "separator" }
+  ]
+}

@@ -33,3 +33,8 @@ node_modules/
 # Composer install output (the PHP gate builds inside Docker)
 packages/php/vendor/
 packages/php/composer.lock
+
+# Demo build artifacts
+examples/demo/main.js
+examples/demo/rich_editor_auy_wasm_bg.wasm
+examples/demo/data/

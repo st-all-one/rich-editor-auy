@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+    <title>rich-editor-auy — demonstração ao vivo</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="hero">
+      <p
+        class="eyebrow">Demonstração ao vivo · Rust · WASM · TypeScript · PHP</p>
+      <h1>rich-editor-auy</h1>
+      <p class="lede">
+        Um editor de texto canônico, acessível e determinístico para a web.
+      </p>
+      <p class="hint">
+        Edite o documento. A barra aplica comandos no core; PHP persiste o envelope e o Rust
+        valida os bytes.
+      </p>
+    </header>
+
+    <nav class="toolbar" aria-label="Comandos do editor">
+      <div class="toolbar-row">
+        <div class="group" role="group" aria-label="Histórico">
+          <button type="button" data-action="undo"
+            title="Undo (Ctrl/Cmd+Z)">↶ Undo</button>
+          <button type="button" data-action="redo"
+            title="Redo (Ctrl/Cmd+Shift+Z)">Redo ↷</button>
+          <button type="button" data-action="clear-history"
+            title="Limpar histórico">Limpar</button>
+        </div>
+        <div class="group" role="group" aria-label="Marcas">
+          <button type="button" data-action="strong"
+            title="Negrito"><b>B</b></button>
+          <button type="button" data-action="em"
+            title="Itálico"><i>I</i></button>
+          <button type="button" data-action="underline"
+            title="Sublinhado"><u>U</u></button>
+          <button type="button" data-action="strike"
+            title="Riscado"><s>S</s></button>
+          <button type="button" data-action="code"
+            title="Código inline"><code>&lt;/&gt;</code></button>
+          <button type="button" data-action="highlight"
+            title="Destaque"><mark>H</mark></button>
+          <button type="button" data-action="sup"
+            title="Sobrescrito">x²</button>
+          <button type="button" data-action="sub" title="Subscrito">H₂</button>
+          <button type="button" data-action="link" title="Link">Link</button>
+          <button type="button" data-action="clear-marks"
+            title="Remover marcas">Limpar marcas</button>
+        </div>
+        <div class="group" role="group" aria-label="Blocos">
+          <button type="button" data-action="paragraph"
+            title="Parágrafo">¶</button>
+          <button type="button" data-action="h1">H1</button>
+          <button type="button" data-action="h2">H2</button>
+          <button type="button" data-action="h3">H3</button>
+          <button type="button" data-action="bullet"
+            title="Lista com marcadores">• Lista</button>
+          <button type="button" data-action="ordered"
+            title="Lista ordenada">1. Lista</button>
+          <button type="button" data-action="quote">Citação</button>
+          <button type="button" data-action="code-block"
+            title="Bloco de código">Código</button>
+          <button type="button" data-action="raw-code"
+            title="Código bruto">Bruto</button>
+        </div>
+      </div>
+      <div class="toolbar-row">
+        <div class="group" role="group" aria-label="Estrutura e clipboard">
+          <button type="button" data-action="hard-break"
+            title="Quebra de linha">↵</button>
+          <button type="button" data-action="table">Tabela</button>
+          <button type="button" data-action="figure">Figura</button>
+          <button type="button" data-action="separator"
+            title="Separador">—</button>
+          <button type="button" data-action="copy">Copiar</button>
+          <button type="button" data-action="cut">Recortar</button>
+          <button type="button" data-action="paste">Colar</button>
+        </div>
+        <div class="group" role="group" aria-label="Servidor">
+          <button type="button" data-action="save"
+            class="primary" title="Salvar envelope no PHP">Salvar</button>
+          <button type="button" data-action="load">Recarregar</button>
+          <button type="button" data-action="reset"
+            title="Restaurar o seed">Seed</button>
+          <button type="button" data-action="validate"
+            title="Validar no CLI Rust">Validar</button>
+          <button type="button" data-action="canonical"
+            title="Canonicalizar no CLI Rust">Canonical</button>
+        </div>
+        <div class="group" role="group" aria-label="Inspeção">
+          <button type="button" data-action="view">DocView</button>
+          <button type="button" data-action="a11y">A11y</button>
+          <button type="button" data-action="export"
+            title="Exportar estado canônico">JSON</button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="layout">
+      <section class="editor-card" aria-labelledby="editor-title">
+        <div class="card-head">
+          <h2 id="editor-title">Documento</h2>
+          <p id="status" role="status"
+            aria-live="polite">Carregando core Rust/WASM…</p>
+        </div>
+        <div id="editor" class="editor"
+          aria-label="Documento de demonstração"></div>
+      </section>
+
+      <aside class="inspector" aria-label="Inspeção">
+        <section class="panel">
+          <h2>Último change set</h2>
+          <pre id="change">—</pre>
+        </section>
+        <section class="panel">
+          <h2>Relatório do servidor / Rust</h2>
+          <pre id="report">—</pre>
+        </section>
+        <section class="panel">
+          <h2>Seleção</h2>
+          <pre id="selection">—</pre>
+        </section>
+      </aside>
+    </main>
+
+    <section class="panels" aria-label="Dados do documento">
+      <details>
+        <summary>Estado canônico</summary>
+        <pre id="json">—</pre>
+      </details>
+      <details>
+        <summary>DocView</summary>
+        <pre id="view">—</pre>
+      </details>
+      <details>
+        <summary>A11yTree</summary>
+        <pre id="a11y">—</pre>
+      </details>
+      <details>
+        <summary>Importar JSON</summary>
+        <textarea id="import-json" spellcheck="false"
+          placeholder='{"mode":"insert","at":0,"fragment":{"blocks":[{"type":"paragraph","content":[{"type":"text","text":"Olá"}]}]}}'></textarea>
+        <div class="row">
+          <button type="button" data-action="import">Importar</button>
+          <button type="button" data-action="dry-run">Dry-run</button>
+        </div>
+        <pre id="import-report">—</pre>
+      </details>
+    </section>
+
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>

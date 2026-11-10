@@ -25,14 +25,19 @@ final class Document
         /** @var array<string, mixed> $json */
         $json = $decoded;
         $doc = $json['doc'] ?? null;
-        if (!is_array($doc)) {
+        if (!is_array($doc) || array_is_list($doc)) {
             throw new \InvalidArgumentException('envelope must contain a doc object');
+        }
+        $docId = $json['doc_id'] ?? null;
+        if ($docId !== null && !is_string($docId)) {
+            throw new \InvalidArgumentException('doc_id must be a string');
         }
         $envelope = new Envelope(
             is_string($json['format'] ?? null) ? $json['format'] : '',
             is_int($json['version'] ?? null) ? $json['version'] : 0,
             is_string($json['schema_fingerprint'] ?? null) ? $json['schema_fingerprint'] : '',
             $doc,
+            $docId,
         );
         $envelope->validate();
         return new self($bytes, $json, $envelope);

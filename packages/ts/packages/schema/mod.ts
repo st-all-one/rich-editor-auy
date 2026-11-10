@@ -1,3 +1,7 @@
+/** BLAKE3 fingerprint of the full schema built by the WASM core. */
+export const SCHEMA_FINGERPRINT =
+  "73055b83ba930ff1bb014bd20a4366e9f27357a42385c84ad007a31a78e5c392";
+
 /** One public schema preset. */
 export interface SchemaPreset {
   readonly name: string;

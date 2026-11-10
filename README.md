@@ -114,10 +114,11 @@ crates.io crate, a WASM artifact, a Composer package and a Deno 2.0/JSR workspac
 WASM crate depends on the published core.
 
 - **TypeScript/Deno 2.0:** `@rich-editor-auy/core` (WASM, no DOM), `@rich-editor-auy/dom`
-  (required adapter for UI; it does not reimplement semantics), `@rich-editor-auy/schema` (presets
-  that emit canonical JSON). The packages are published to **JSR** from `packages/ts`.
+  (required adapter for UI; it does not reimplement semantics), `@rich-editor-auy/schema`
+  (`fullSchema` and `SCHEMA_FINGERPRINT`). The packages are published to **JSR** from `packages/ts`.
 - **PHP:** the thin Composer package `rich-editor-auy/php` for envelope, byte-preserving documents
-  and optional CLI validation. No HTML renderer, no schema engine.
+  and optional CLI validation, returning a `ValidationReport` with issue codes, offsets and paths.
+  No HTML renderer, no schema engine.
 - **Zero styling:** the adapter uses semantic native elements by default (`neutral` is opt-in),
   `data-auy-*` and an `A11yTree` mapping. No CSS, no `class`, no `style`, no wrapper; `destroy()`
   restores the host.

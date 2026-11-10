@@ -19,6 +19,11 @@ e o projeto usa Versionamento Semântico.
   e todo `RefTarget.node` que apontava para elas, em duas passadas; `options.addToHistory` mantém a
   ingestão fora do undo; `maxOps`/`maxTableCells` fecham os limites de lote; `dryRun` valida
   documento, fragmento e ops sem mutar o editor.
+- Demo ao vivo em `examples/demo`: página TypeScript com WASM stateful, persistência PHP e
+  validação/canonicalização pelo CLI Rust; seed cobre schema completo, mídia, tabela, `raw_code`,
+  refs, clipboard, IME e painéis `DocView`/`A11y`/change set. `./examples/demo/run.sh`.
+- `validate_a11y` reconhece `table_header` aninhado em `table_row` e não emite `A006` falso para
+  tabela com cabeçalho.
 - `NodeId::derived` para âncoras determinísticas (BLAKE3, domain separation
   `rich-editor-auy/node-id/v1`).
 - `openStart`/`openEnd` no wire de `Slice`: `Doc::slice` marca bordas parciais, o decoder valida
@@ -62,6 +67,13 @@ e o projeto usa Versionamento Semântico.
 - Fuzz: alvos em `Schema::full`, novos alvos `round_trip` (bytes canônicos estáveis + slice wire) e
   `fragment` (fragmento/slice canônicos) e corpus de sementes em `fuzz/corpus/`; `make fuzz` e o
   job de CI rodam 60 s por alvo.
+- TS `Editor`: `selection()`, `block(index)`, `view(range)`, aliases `slice`/`insertSlice` e
+  `apply(Transaction)`; `@rich-editor-auy/schema` exporta `SCHEMA_FINGERPRINT`, com teste contra o
+  WASM para impedir drift.
+- PHP: `ValidationReport`/`ValidationIssue` com `ok()`, `exitCode`, `stdout`, `stderr` e issues
+  (`code`/`offset`/`path`); `Validator` usa arquivos temporários para evitar deadlock de pipe e
+  `run()` preserva o resultado bruto; `Envelope` aceita `doc_id` opcional e `Document` exige `doc`
+  objeto.
 - Gate do PHP em Docker (`packages/php/Dockerfile`, `make php`): `composer validate --strict`,
   `audit`, PHPUnit e PHPStan level max verdes.
 - `Schema::doc_filler` e `Slice::size` como API pública documentada.
